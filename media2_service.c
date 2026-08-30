@@ -71,7 +71,9 @@ int media2_get_profiles()
     long size;
     int q, h;
     char *h264profile[] = { "High", "Main" };
-    char *profile[] = { "Profile_0", "Profile_1" };
+    char *profile[2];
+    profile[0] = service_ctx.profiles[0].name;
+    profile[1] = (service_ctx.profiles_num > 1) ? service_ctx.profiles[1].name : service_ctx.profiles[0].name;
     int c;
     char dest_a[] = "stdout";
     char *dest;
