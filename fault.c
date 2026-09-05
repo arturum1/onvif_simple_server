@@ -52,9 +52,7 @@ int send_fault(char *service, char *rec_send, char *subcode, char *subcode_ex, c
     char port[8];
     char *cap;
 
-    port[0] = '\0';
-    if (service_ctx.port != 80)
-        snprintf(port, sizeof(port), ":%d", service_ctx.port);
+    snprintf(port, sizeof(port), ":%d", service_ctx.port);
     snprintf(device_address, sizeof(device_address), "http://%s%s/onvif", service_ctx.address_url, port);
     snprintf(service_address, sizeof(service_address), "http://%s%s/onvif/%s", service_ctx.address_url, port, service);
 

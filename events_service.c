@@ -88,9 +88,7 @@ int events_create_pull_point_subscription()
 
     log_info("CreatePullPointSubscription received");
 
-    my_port[0] = '\0';
-    if (service_ctx.port != 80)
-        snprintf(my_port, sizeof(my_port), ":%d", service_ctx.port);
+    snprintf(my_port, sizeof(my_port), ":%d", service_ctx.port);
 
     // TopicExpression filter is supported
     element = get_element("Filter", "Body");
@@ -439,9 +437,7 @@ int events_subscribe()
 
     log_info("Subscribe request received");
 
-    my_port[0] = '\0';
-    if (service_ctx.port != 80)
-        snprintf(my_port, sizeof(my_port), ":%d", service_ctx.port);
+    snprintf(my_port, sizeof(my_port), ":%d", service_ctx.port);
 
     address = get_element("Address", "Body");
     if (address == NULL) {

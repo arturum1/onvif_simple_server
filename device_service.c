@@ -46,9 +46,7 @@ int device_get_services()
 
     char audio_sources[2], audio_outputs[2], relay_outputs[2];
 
-    port[0] = '\0';
-    if (service_ctx.port != 80)
-        snprintf(port, sizeof(port), ":%d", service_ctx.port);
+    snprintf(port, sizeof(port), ":%d", service_ctx.port);
     snprintf(device_service_address, sizeof(device_service_address), "http://%s%s/onvif/device_service", service_ctx.address_url, port);
     snprintf(media_service_address, sizeof(media_service_address), "http://%s%s/onvif/media_service", service_ctx.address_url, port);
     snprintf(media2_service_address, sizeof(media2_service_address), "http://%s%s/onvif/media2_service", service_ctx.address_url, port);
@@ -511,9 +509,7 @@ int device_get_capabilities()
         icategory = 15;
     }
 
-    port[0] = '\0';
-    if (service_ctx.port != 80)
-        snprintf(port, sizeof(port), ":%d", service_ctx.port);
+    snprintf(port, sizeof(port), ":%d", service_ctx.port);
     snprintf(device_service_address, sizeof(device_service_address), "http://%s%s/onvif/device_service", service_ctx.address_url, port);
     snprintf(media_service_address, sizeof(media_service_address), "http://%s%s/onvif/media_service", service_ctx.address_url, port);
     snprintf(ptz_service_address, sizeof(ptz_service_address), "http://%s%s/onvif/ptz_service", service_ctx.address_url, port);
