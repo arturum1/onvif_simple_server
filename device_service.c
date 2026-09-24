@@ -37,6 +37,7 @@ int device_get_services()
     char media_service_address[MAX_LEN];
     char media2_service_address[MAX_LEN];
     char ptz_service_address[MAX_LEN];
+    char imaging_service_address[MAX_LEN];
     char events_service_address[MAX_LEN];
     char deviceio_service_address[MAX_LEN];
     char port[8];
@@ -46,13 +47,30 @@ int device_get_services()
 
     char audio_sources[2], audio_outputs[2], relay_outputs[2];
 
+    char imaging_service_block[MAX_CAT_LEN];
+
     snprintf(port, sizeof(port), ":%d", service_ctx.port);
     snprintf(device_service_address, sizeof(device_service_address), "http://%s%s/onvif/device_service", service_ctx.address_url, port);
     snprintf(media_service_address, sizeof(media_service_address), "http://%s%s/onvif/media_service", service_ctx.address_url, port);
     snprintf(media2_service_address, sizeof(media2_service_address), "http://%s%s/onvif/media2_service", service_ctx.address_url, port);
     snprintf(ptz_service_address, sizeof(ptz_service_address), "http://%s%s/onvif/ptz_service", service_ctx.address_url, port);
+    snprintf(imaging_service_address, sizeof(imaging_service_address), "http://%s%s/onvif/imaging_service", service_ctx.address_url, port);
     snprintf(events_service_address, sizeof(events_service_address), "http://%s%s/onvif/events_service", service_ctx.address_url, port);
     snprintf(deviceio_service_address, sizeof(deviceio_service_address), "http://%s%s/onvif/deviceio_service", service_ctx.address_url, port);
+
+    if (service_ctx.imaging_node.enable == 1) {
+        snprintf(imaging_service_block, sizeof(imaging_service_block),
+                "<tds:Service>\n"
+                "                <tds:Namespace>http://www.onvif.org/ver20/imaging/wsdl</tds:Namespace>\n"
+                "                <tds:XAddr>%s</tds:XAddr>\n"
+                "                <tds:Version>\n"
+                "                    <tt:Major>19</tt:Major>\n"
+                "                    <tt:Minor>6</tt:Minor>\n"
+                "                </tds:Version>\n"
+                "            </tds:Service>", imaging_service_address);
+    } else {
+        imaging_service_block[0] = '\0';
+    }
 
     if ((service_ctx.events_enable == EVENTS_PULLPOINT) || (service_ctx.events_enable == EVENTS_BOTH)) {
         snprintf(epullpoint, sizeof(epullpoint), "%s", "true");
@@ -85,7 +103,7 @@ int device_get_services()
     cap = get_element("IncludeCapability", "Body");
     if ((cap != NULL) && (strcasecmp(cap, "true")) == 0) {
         if ((service_ctx.ptz_node.enable == 0) && (service_ctx.adv_enable_media2 == 0)) {
-            long size = cat(NULL, "device_service_files/GetServices_with_capabilities_no_ptz_no_media2.xml", 18,
+            long size = cat(NULL, "device_service_files/GetServices_with_capabilities_no_ptz_no_media2.xml", 20,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
@@ -94,11 +112,12 @@ int device_get_services()
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block,
                     "%RELAY_OUTPUTS%", relay_outputs);
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetServices_with_capabilities_no_ptz_no_media2.xml", 18,
+            return cat("stdout", "device_service_files/GetServices_with_capabilities_no_ptz_no_media2.xml", 20,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
@@ -107,10 +126,11 @@ int device_get_services()
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block,
                     "%RELAY_OUTPUTS%", relay_outputs);
 
         } else if ((service_ctx.ptz_node.enable == 0) && (service_ctx.adv_enable_media2 == 1)) {
-            long size = cat(NULL, "device_service_files/GetServices_with_capabilities_no_ptz_media2.xml", 20,
+            long size = cat(NULL, "device_service_files/GetServices_with_capabilities_no_ptz_media2.xml", 22,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%MEDIA2_SERVICE_ADDRESS%", media2_service_address,
@@ -120,11 +140,12 @@ int device_get_services()
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block,
                     "%RELAY_OUTPUTS%", relay_outputs);
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetServices_with_capabilities_no_ptz_media2.xml", 20,
+            return cat("stdout", "device_service_files/GetServices_with_capabilities_no_ptz_media2.xml", 22,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%MEDIA2_SERVICE_ADDRESS%", media2_service_address,
@@ -134,10 +155,11 @@ int device_get_services()
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block,
                     "%RELAY_OUTPUTS%", relay_outputs);
 
         } else if ((service_ctx.ptz_node.enable == 1) && (service_ctx.adv_enable_media2 == 0)) {
-            long size = cat(NULL, "device_service_files/GetServices_with_capabilities_ptz_no_media2.xml", 20,
+            long size = cat(NULL, "device_service_files/GetServices_with_capabilities_ptz_no_media2.xml", 22,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%PTZ_SERVICE_ADDRESS%", ptz_service_address,
@@ -147,11 +169,12 @@ int device_get_services()
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block,
                     "%RELAY_OUTPUTS%", relay_outputs);
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetServices_with_capabilities_ptz_no_media2.xml", 20,
+            return cat("stdout", "device_service_files/GetServices_with_capabilities_ptz_no_media2.xml", 22,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%PTZ_SERVICE_ADDRESS%", ptz_service_address,
@@ -161,10 +184,11 @@ int device_get_services()
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block,
                     "%RELAY_OUTPUTS%", relay_outputs);
 
         } else if ((service_ctx.ptz_node.enable == 1) && (service_ctx.adv_enable_media2 == 1)) {
-            long size = cat(NULL, "device_service_files/GetServices_with_capabilities_ptz_media2.xml", 22,
+            long size = cat(NULL, "device_service_files/GetServices_with_capabilities_ptz_media2.xml", 24,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%MEDIA2_SERVICE_ADDRESS%", media2_service_address,
@@ -175,11 +199,12 @@ int device_get_services()
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block,
                     "%RELAY_OUTPUTS%", relay_outputs);
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetServices_with_capabilities_ptz_media2.xml", 22,
+            return cat("stdout", "device_service_files/GetServices_with_capabilities_ptz_media2.xml", 24,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%MEDIA2_SERVICE_ADDRESS%", media2_service_address,
@@ -190,76 +215,85 @@ int device_get_services()
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block,
                     "%RELAY_OUTPUTS%", relay_outputs);
         }
     } else {
         if ((service_ctx.ptz_node.enable == 0) && (service_ctx.adv_enable_media2 == 0)) {
-            long size = cat(NULL, "device_service_files/GetServices_no_ptz_no_media2.xml", 8,
+            long size = cat(NULL, "device_service_files/GetServices_no_ptz_no_media2.xml", 10,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
-                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address);
+                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block);
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetServices_no_ptz_no_media2.xml", 8,
+            return cat("stdout", "device_service_files/GetServices_no_ptz_no_media2.xml", 10,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
-                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address);
+                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block);
 
         } else if ((service_ctx.ptz_node.enable == 0) && (service_ctx.adv_enable_media2 == 1)) {
-            long size = cat(NULL, "device_service_files/GetServices_no_ptz_media2.xml", 10,
+            long size = cat(NULL, "device_service_files/GetServices_no_ptz_media2.xml", 12,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%MEDIA2_SERVICE_ADDRESS%", media2_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
-                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address);
+                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block);
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetServices_no_ptz_media2.xml", 10,
+            return cat("stdout", "device_service_files/GetServices_no_ptz_media2.xml", 12,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%MEDIA2_SERVICE_ADDRESS%", media2_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
-                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address);
+                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block);
 
         } else if ((service_ctx.ptz_node.enable == 1) && (service_ctx.adv_enable_media2 == 0)) {
-            long size = cat(NULL, "device_service_files/GetServices_ptz_no_media2.xml", 10,
+            long size = cat(NULL, "device_service_files/GetServices_ptz_no_media2.xml", 12,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%PTZ_SERVICE_ADDRESS%", ptz_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
-                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address);
+                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block);
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetServices_ptz_no_media2.xml", 10,
+            return cat("stdout", "device_service_files/GetServices_ptz_no_media2.xml", 12,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%PTZ_SERVICE_ADDRESS%", ptz_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
-                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address);
+                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block);
 
         } else if ((service_ctx.ptz_node.enable == 1) && (service_ctx.adv_enable_media2 == 1)) {
-            long size = cat(NULL, "device_service_files/GetServices_ptz_media2.xml", 12,
+            long size = cat(NULL, "device_service_files/GetServices_ptz_media2.xml", 14,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%MEDIA2_SERVICE_ADDRESS%", media2_service_address,
                     "%PTZ_SERVICE_ADDRESS%", ptz_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
-                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address);
+                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block);
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetServices_ptz_media2.xml", 12,
+            return cat("stdout", "device_service_files/GetServices_ptz_media2.xml", 14,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%MEDIA2_SERVICE_ADDRESS%", media2_service_address,
                     "%PTZ_SERVICE_ADDRESS%", ptz_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
-                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address);
+                    "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
+                    "%IMAGING_SERVICE_BLOCK%", imaging_service_block);
         }
     }
 }
@@ -479,6 +513,7 @@ int device_get_capabilities()
     char device_service_address[MAX_LEN];
     char media_service_address[MAX_LEN];
     char ptz_service_address[MAX_LEN];
+    char imaging_service_address[MAX_LEN];
     char events_service_address[MAX_LEN];
     char deviceio_service_address[MAX_LEN];
     char port[8];
@@ -488,6 +523,7 @@ int device_get_capabilities()
     char ebasesubscription[8], epullpoint[8];
 
     char audio_sources[2], audio_outputs[2], relay_outputs[2];
+    char imaging_capability[MAX_CAT_LEN];
 
     category = get_element("Category", "Body");
     if (category != NULL) {
@@ -513,8 +549,18 @@ int device_get_capabilities()
     snprintf(device_service_address, sizeof(device_service_address), "http://%s%s/onvif/device_service", service_ctx.address_url, port);
     snprintf(media_service_address, sizeof(media_service_address), "http://%s%s/onvif/media_service", service_ctx.address_url, port);
     snprintf(ptz_service_address, sizeof(ptz_service_address), "http://%s%s/onvif/ptz_service", service_ctx.address_url, port);
+    snprintf(imaging_service_address, sizeof(imaging_service_address), "http://%s%s/onvif/imaging_service", service_ctx.address_url, port);
     snprintf(events_service_address, sizeof(events_service_address), "http://%s%s/onvif/events_service", service_ctx.address_url, port);
     snprintf(deviceio_service_address, sizeof(deviceio_service_address), "http://%s%s/onvif/deviceio_service", service_ctx.address_url, port);
+
+    if (service_ctx.imaging_node.enable == 1) {
+        snprintf(imaging_capability, sizeof(imaging_capability),
+                "<tt:Imaging>\n"
+                "                    <tt:XAddr>%s</tt:XAddr>\n"
+                "                </tt:Imaging>", imaging_service_address);
+    } else {
+        imaging_capability[0] = '\0';
+    }
 
     if ((service_ctx.events_enable == EVENTS_PULLPOINT) || (service_ctx.events_enable == EVENTS_BOTH)) {
         snprintf(epullpoint, sizeof(epullpoint), "%s", "true");
@@ -587,12 +633,13 @@ int device_get_capabilities()
                 "%EVENTS_PULLPOINT%", epullpoint);
     } else {
         if (service_ctx.ptz_node.enable == 0) {
-            long size = cat(NULL, "device_service_files/GetCapabilities_no_ptz.xml", 18,
+            long size = cat(NULL, "device_service_files/GetCapabilities_no_ptz.xml", 20,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
                     "%EVENTS_BASESUBSCRIPTION%", ebasesubscription,
                     "%EVENTS_PULLPOINT%", epullpoint,
+                    "%IMAGING_CAPABILITY%", imaging_capability,
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
@@ -600,24 +647,26 @@ int device_get_capabilities()
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetCapabilities_no_ptz.xml", 18,
+            return cat("stdout", "device_service_files/GetCapabilities_no_ptz.xml", 20,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
                     "%EVENTS_BASESUBSCRIPTION%", ebasesubscription,
                     "%EVENTS_PULLPOINT%", epullpoint,
+                    "%IMAGING_CAPABILITY%", imaging_capability,
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
                     "%RELAY_OUTPUTS%", relay_outputs);
         } else {
-            long size = cat(NULL, "device_service_files/GetCapabilities_ptz.xml", 20,
+            long size = cat(NULL, "device_service_files/GetCapabilities_ptz.xml", 22,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%PTZ_SERVICE_ADDRESS%", ptz_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
                     "%EVENTS_BASESUBSCRIPTION%", ebasesubscription,
                     "%EVENTS_PULLPOINT%", epullpoint,
+                    "%IMAGING_CAPABILITY%", imaging_capability,
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,
@@ -625,13 +674,14 @@ int device_get_capabilities()
 
             output_http_headers(size);
 
-            return cat("stdout", "device_service_files/GetCapabilities_ptz.xml", 20,
+            return cat("stdout", "device_service_files/GetCapabilities_ptz.xml", 22,
                     "%DEVICE_SERVICE_ADDRESS%", device_service_address,
                     "%MEDIA_SERVICE_ADDRESS%", media_service_address,
                     "%PTZ_SERVICE_ADDRESS%", ptz_service_address,
                     "%EVENTS_SERVICE_ADDRESS%", events_service_address,
                     "%EVENTS_BASESUBSCRIPTION%", ebasesubscription,
                     "%EVENTS_PULLPOINT%", epullpoint,
+                    "%IMAGING_CAPABILITY%", imaging_capability,
                     "%DEVICEIO_SERVICE_ADDRESS%", deviceio_service_address,
                     "%AUDIO_SOURCES%", audio_sources,
                     "%AUDIO_OUTPUTS%", audio_outputs,

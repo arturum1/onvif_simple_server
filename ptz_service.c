@@ -301,6 +301,9 @@ int ptz_get_node()
     char max_y[256];
     char min_z[256];
     char max_z[256];
+    char aux_commands[MAX_CAT_LEN];
+    int i;
+    size_t pos;
 
     snprintf(min_x, sizeof(min_x), "%.1f", service_ctx.ptz_node.min_step_x);
     snprintf(max_x, sizeof(max_x), "%.1f", service_ctx.ptz_node.max_step_x);
@@ -308,6 +311,15 @@ int ptz_get_node()
     snprintf(max_y, sizeof(max_y), "%.1f", service_ctx.ptz_node.max_step_y);
     snprintf(min_z, sizeof(min_z), "%.1f", service_ctx.ptz_node.min_step_z);
     snprintf(max_z, sizeof(max_z), "%.1f", service_ctx.ptz_node.max_step_z);
+
+    pos = 0;
+    aux_commands[0] = '\0';
+    for (i = 0; i < service_ctx.aux_commands_num; i++) {
+        if (service_ctx.aux_commands[i].command != NULL) {
+            pos += snprintf(aux_commands + pos, sizeof(aux_commands) - pos, "%s<tt:AuxiliaryCommands>%s</tt:AuxiliaryCommands>",
+                    (pos == 0) ? "" : "\n                    ", service_ctx.aux_commands[i].command);
+        }
+    }
 
     const char *node_token = get_element("NodeToken", "Body");
     if (strcmp("PTZNodeToken", node_token) != 0) {
@@ -317,23 +329,25 @@ int ptz_get_node()
 
     char *template = ptz_supports_zoom() ? "ptz_service_files/GetNode.xml" : "ptz_service_files/GetNode_nozoom.xml";
 
-    long size = cat(NULL, template, 12,
+    long size = cat(NULL, template, 14,
             "%MIN_X%", min_x,
             "%MAX_X%", max_x,
             "%MIN_Y%", min_y,
             "%MAX_Y%", max_y,
             "%MIN_Z%", min_z,
-            "%MAX_Z%", max_z);
+            "%MAX_Z%", max_z,
+            "%AUX_COMMANDS%", aux_commands);
 
     output_http_headers(size);
 
-    return cat("stdout", template, 12,
+    return cat("stdout", template, 14,
             "%MIN_X%", min_x,
             "%MAX_X%", max_x,
             "%MIN_Y%", min_y,
             "%MAX_Y%", max_y,
             "%MIN_Z%", min_z,
-            "%MAX_Z%", max_z);
+            "%MAX_Z%", max_z,
+            "%AUX_COMMANDS%", aux_commands);
 }
 
 int ptz_get_presets()
@@ -1171,6 +1185,56 @@ int ptz_remove_preset()
     output_http_headers(size);
 
     return cat("stdout", "ptz_service_files/RemovePreset.xml", 0);
+}
+
+/* Shell metacharacters (;|$`&<>!*?\) are rejected to prevent command
+ * injection when the aux command is used to build a shell command. */
+static int is_safe_aux_command(const char *s)
+{
+    size_t i, len;
+    if (s == NULL)
+        return 0;
+    len = strlen(s);
+    if (len == 0 || len > 255)
+        return 0;
+    for (i = 0; i < len; i++) {
+        char c = s[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' ||
+              c == ':' || c == '|'))
+            return 0;
+    }
+    return 1;
+}
+
+int ptz_send_auxiliary_command()
+{
+    const char *aux_command;
+    int i;
+
+    aux_command = get_element("AuxiliaryCommand", "Body");
+    if ((aux_command == NULL) || (!is_safe_aux_command(aux_command))) {
+        send_fault("ptz_service", "Sender", "ter:InvalidArgVal", "ter:InvalidArgVal", "Invalid argument value", "The requested AuxiliaryCommand is not valid");
+        return -1;
+    }
+
+    for (i = 0; i < service_ctx.aux_commands_num; i++) {
+        if ((service_ctx.aux_commands[i].command != NULL) &&
+                (strcasecmp(aux_command, service_ctx.aux_commands[i].command) == 0)) {
+            if (service_ctx.aux_commands[i].exec == NULL) {
+                send_action_failed_fault("ptz_service", -2);
+                return -2;
+            }
+            system(service_ctx.aux_commands[i].exec);
+
+            long size = cat(NULL, "ptz_service_files/SendAuxiliaryCommand.xml", 0);
+            output_http_headers(size);
+            return cat("stdout", "ptz_service_files/SendAuxiliaryCommand.xml", 0);
+        }
+    }
+
+    send_fault("ptz_service", "Sender", "ter:InvalidArgVal", "ter:NoAuxCommand", "No aux command", "The requested AuxiliaryCommand is not supported by this device");
+    return -3;
 }
 
 int ptz_unsupported(const char *method)

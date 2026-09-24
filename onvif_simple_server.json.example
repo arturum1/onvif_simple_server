@@ -72,6 +72,42 @@
         "get_presets": "/usr/local/bin/ptz_presets.sh -a get_presets"
     },
 
+    "imaging": {
+        "enable": 1,
+        "focus_min_step": 0.0,
+        "focus_max_step": 1.0,
+        "focus_move_in": "/usr/local/bin/focus_move -m in -s %f",
+        "focus_move_out": "/usr/local/bin/focus_move -m out -s %f",
+        "focus_move_stop": "/usr/local/bin/focus_move -m stop",
+        "focus_jump_to_abs": "/usr/local/bin/focus_move -a %f",
+        "focus_jump_to_rel": "/usr/local/bin/focus_move -r %f",
+        "focus_get_position": "/usr/local/bin/focus_get_position",
+        "focus_is_moving": "/usr/local/bin/focus_is_moving",
+        "focus_set_auto_focus": "/usr/local/bin/focus_set_auto_focus -m %s",
+        "auto_focus": "auto",
+        "ir_cut_filter": "auto",
+        "ir_cut_filter_set": "/usr/local/bin/ir_cut_filter -m %s"
+    },
+
+    "aux_commands": [
+        {
+            "command": "tt:IRLamp|On",
+            "exec": "/usr/local/bin/set_ir_led -s on"
+        },
+        {
+            "command": "tt:IRLamp|Off",
+            "exec": "/usr/local/bin/set_ir_led -s off"
+        },
+        {
+            "command": "tt:Wiper|On",
+            "exec": "/usr/local/bin/set_wiper -s on"
+        },
+        {
+            "command": "tt:Wiper|Off",
+            "exec": "/usr/local/bin/set_wiper -s off"
+        }
+    ],
+
     "relays" : [
         {
             "idle_state": "open",

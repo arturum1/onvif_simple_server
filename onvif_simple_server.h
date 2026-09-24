@@ -72,6 +72,19 @@ typedef struct {
 } relay_output_t;
 
 typedef struct {
+    char *command;
+    char *exec;
+} aux_command_t;
+
+#define MAX_AUX_COMMANDS 8
+
+typedef enum {
+    IRCUT_AUTO,
+    IRCUT_ON,
+    IRCUT_OFF
+} ir_cut_filter_t;
+
+typedef struct {
     int enable;
     int zoom_enable;
     double min_step_x;
@@ -98,6 +111,23 @@ typedef struct {
     char *jump_to_rel;
     char *get_presets;
 } ptz_node_t;
+
+typedef struct {
+    int enable;
+    double focus_min_step;
+    double focus_max_step;
+    char *focus_move_in;
+    char *focus_move_out;
+    char *focus_move_stop;
+    char *focus_jump_to_abs;
+    char *focus_jump_to_rel;
+    char *focus_get_position;
+    char *focus_is_moving;
+    char *focus_set_auto_focus;
+    int auto_focus;              /* 0 = MANUAL, 1 = AUTO */
+    ir_cut_filter_t ir_cut_filter;
+    char *ir_cut_filter_set;
+} imaging_node_t;
 
 typedef struct {
     char *topic;
@@ -141,6 +171,9 @@ typedef struct {
     relay_output_t *relay_outputs;
     int relay_outputs_num;
     ptz_node_t ptz_node;
+    aux_command_t *aux_commands;
+    int aux_commands_num;
+    imaging_node_t imaging_node;
     event_t *events;
     int events_enable;
     int events_num;

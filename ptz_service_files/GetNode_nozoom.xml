@@ -60,6 +60,7 @@
                         </tt:XRange>
                     </tt:PanTiltSpeedSpace>
                 </tt:SupportedPTZSpaces>
+                %AUX_COMMANDS%
                 <tt:MaximumNumberOfPresets>8</tt:MaximumNumberOfPresets>
                 <tt:HomeSupported>true</tt:HomeSupported>
             </tptz:PTZNode>

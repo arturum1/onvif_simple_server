@@ -70,6 +70,22 @@ int process_conf_file(char *file)
     service_ctx.ptz_node.zoom_enable = -1;
     service_ctx.relay_outputs = NULL;
     service_ctx.relay_outputs_num = 0;
+    service_ctx.aux_commands = NULL;
+    service_ctx.aux_commands_num = 0;
+    service_ctx.imaging_node.enable = 0;
+    service_ctx.imaging_node.focus_min_step = 0.0;
+    service_ctx.imaging_node.focus_max_step = 1.0;
+    service_ctx.imaging_node.focus_move_in = NULL;
+    service_ctx.imaging_node.focus_move_out = NULL;
+    service_ctx.imaging_node.focus_move_stop = NULL;
+    service_ctx.imaging_node.focus_jump_to_abs = NULL;
+    service_ctx.imaging_node.focus_jump_to_rel = NULL;
+    service_ctx.imaging_node.focus_get_position = NULL;
+    service_ctx.imaging_node.focus_is_moving = NULL;
+    service_ctx.imaging_node.focus_set_auto_focus = NULL;
+    service_ctx.imaging_node.auto_focus = 0;
+    service_ctx.imaging_node.ir_cut_filter = IRCUT_AUTO;
+    service_ctx.imaging_node.ir_cut_filter_set = NULL;
     service_ctx.events = NULL;
     service_ctx.events_enable = EVENTS_NONE;
     service_ctx.events_num = 0;
@@ -528,6 +544,112 @@ int process_conf_file(char *file)
                 snprintf(service_ctx.ptz_node.get_presets, strlen(value) + 1, "%s", value);
             }
 
+        //Imaging Profile for ONVIF Imaging Service
+        } else if (strcasecmp(param, "imaging") == 0) {
+            if (strcasecmp(value, "1") == 0) {
+                service_ctx.imaging_node.enable = 1;
+            }
+        } else if (strcasecmp(param, "focus_min_step") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                errno = 0;
+                service_ctx.imaging_node.focus_min_step = strtod(value, &endptr);
+                if ((errno == ERANGE || (errno != 0 && service_ctx.imaging_node.focus_min_step == 0.0)) ||
+                        (endptr == value)) {
+                    log_error("Wrong option: %s", line);
+                    return -2;
+                }
+            }
+        } else if (strcasecmp(param, "focus_max_step") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                errno = 0;
+                service_ctx.imaging_node.focus_max_step = strtod(value, &endptr);
+                if ((errno == ERANGE || (errno != 0 && service_ctx.imaging_node.focus_max_step == 0.0)) ||
+                        (endptr == value)) {
+                    log_error("Wrong option: %s", line);
+                    return -2;
+                }
+            }
+        } else if (strcasecmp(param, "focus_move_in") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                service_ctx.imaging_node.focus_move_in = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.imaging_node.focus_move_in, strlen(value) + 1, "%s", value);
+            }
+        } else if (strcasecmp(param, "focus_move_out") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                service_ctx.imaging_node.focus_move_out = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.imaging_node.focus_move_out, strlen(value) + 1, "%s", value);
+            }
+        } else if (strcasecmp(param, "focus_move_stop") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                service_ctx.imaging_node.focus_move_stop = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.imaging_node.focus_move_stop, strlen(value) + 1, "%s", value);
+            }
+        } else if (strcasecmp(param, "focus_jump_to_abs") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                service_ctx.imaging_node.focus_jump_to_abs = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.imaging_node.focus_jump_to_abs, strlen(value) + 1, "%s", value);
+            }
+        } else if (strcasecmp(param, "focus_jump_to_rel") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                service_ctx.imaging_node.focus_jump_to_rel = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.imaging_node.focus_jump_to_rel, strlen(value) + 1, "%s", value);
+            }
+        } else if (strcasecmp(param, "focus_get_position") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                service_ctx.imaging_node.focus_get_position = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.imaging_node.focus_get_position, strlen(value) + 1, "%s", value);
+            }
+        } else if (strcasecmp(param, "focus_is_moving") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                service_ctx.imaging_node.focus_is_moving = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.imaging_node.focus_is_moving, strlen(value) + 1, "%s", value);
+            }
+        } else if (strcasecmp(param, "focus_set_auto_focus") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                service_ctx.imaging_node.focus_set_auto_focus = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.imaging_node.focus_set_auto_focus, strlen(value) + 1, "%s", value);
+            }
+        } else if (strcasecmp(param, "auto_focus") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                if (strcasecmp(value, "1") == 0) {
+                    service_ctx.imaging_node.auto_focus = 1;
+                } else if (strcasecmp(value, "0") == 0) {
+                    service_ctx.imaging_node.auto_focus = 0;
+                }
+            }
+        } else if (strcasecmp(param, "ir_cut_filter") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                if (strcasecmp(value, "auto") == 0) {
+                    service_ctx.imaging_node.ir_cut_filter = IRCUT_AUTO;
+                } else if (strcasecmp(value, "on") == 0) {
+                    service_ctx.imaging_node.ir_cut_filter = IRCUT_ON;
+                } else if (strcasecmp(value, "off") == 0) {
+                    service_ctx.imaging_node.ir_cut_filter = IRCUT_OFF;
+                }
+            }
+        } else if (strcasecmp(param, "ir_cut_filter_set") == 0) {
+            if (service_ctx.imaging_node.enable == 1) {
+                service_ctx.imaging_node.ir_cut_filter_set = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.imaging_node.ir_cut_filter_set, strlen(value) + 1, "%s", value);
+            }
+
+        //Auxiliary commands (SendAuxiliaryCommand on PTZ service)
+        } else if (strcasecmp(param, "aux_command") == 0) {
+            service_ctx.aux_commands_num++;
+            if (service_ctx.aux_commands_num >= MAX_AUX_COMMANDS) {
+                log_error("Too many aux commands, max is: %d", MAX_AUX_COMMANDS);
+                return -2;
+            }
+            service_ctx.aux_commands = (aux_command_t *) realloc(service_ctx.aux_commands, service_ctx.aux_commands_num * sizeof(aux_command_t));
+            service_ctx.aux_commands[service_ctx.aux_commands_num - 1].command = (char *) malloc(strlen(value) + 1);
+            snprintf(service_ctx.aux_commands[service_ctx.aux_commands_num - 1].command, strlen(value) + 1, "%s", value);
+            service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec = NULL;
+        } else if (strcasecmp(param, "aux_exec") == 0) {
+            if (service_ctx.aux_commands_num > 0) {
+                service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec, strlen(value) + 1, "%s", value);
+            }
+
         //Relay outputs
         } else if (strcasecmp(param, "idle_state") == 0) {
             service_ctx.relay_outputs_num++;
@@ -819,6 +941,22 @@ int process_json_conf_file(char *file)
     service_ctx.ptz_node.zoom_enable = -1;
     service_ctx.relay_outputs = NULL;
     service_ctx.relay_outputs_num = 0;
+    service_ctx.aux_commands = NULL;
+    service_ctx.aux_commands_num = 0;
+    service_ctx.imaging_node.enable = 0;
+    service_ctx.imaging_node.focus_min_step = 0.0;
+    service_ctx.imaging_node.focus_max_step = 1.0;
+    service_ctx.imaging_node.focus_move_in = NULL;
+    service_ctx.imaging_node.focus_move_out = NULL;
+    service_ctx.imaging_node.focus_move_stop = NULL;
+    service_ctx.imaging_node.focus_jump_to_abs = NULL;
+    service_ctx.imaging_node.focus_jump_to_rel = NULL;
+    service_ctx.imaging_node.focus_get_position = NULL;
+    service_ctx.imaging_node.focus_is_moving = NULL;
+    service_ctx.imaging_node.focus_set_auto_focus = NULL;
+    service_ctx.imaging_node.auto_focus = 0;
+    service_ctx.imaging_node.ir_cut_filter = IRCUT_AUTO;
+    service_ctx.imaging_node.ir_cut_filter_set = NULL;
     service_ctx.events = NULL;
     service_ctx.events_enable = EVENTS_NONE;
     service_ctx.events_num = 0;
@@ -1136,6 +1274,94 @@ int process_json_conf_file(char *file)
         log_debug("");
     }
 
+    // Load imaging (focus, IR cut filter) configuration from main configuration file
+    if (json_object_object_get_ex(json_file, "imaging", &value)) {
+        log_debug("Found Imaging section in configuration");
+
+        get_int_from_json(&(service_ctx.imaging_node.enable), value, "enable");
+        get_double_from_json(&(service_ctx.imaging_node.focus_min_step), value, "focus_min_step");
+        get_double_from_json(&(service_ctx.imaging_node.focus_max_step), value, "focus_max_step");
+        get_string_from_json(&(service_ctx.imaging_node.focus_move_in), value, "focus_move_in");
+        get_string_from_json(&(service_ctx.imaging_node.focus_move_out), value, "focus_move_out");
+        get_string_from_json(&(service_ctx.imaging_node.focus_move_stop), value, "focus_move_stop");
+        get_string_from_json(&(service_ctx.imaging_node.focus_jump_to_abs), value, "focus_jump_to_abs");
+        get_string_from_json(&(service_ctx.imaging_node.focus_jump_to_rel), value, "focus_jump_to_rel");
+        get_string_from_json(&(service_ctx.imaging_node.focus_get_position), value, "focus_get_position");
+        get_string_from_json(&(service_ctx.imaging_node.focus_is_moving), value, "focus_is_moving");
+        get_string_from_json(&(service_ctx.imaging_node.focus_set_auto_focus), value, "focus_set_auto_focus");
+        get_string_from_json(&(service_ctx.imaging_node.ir_cut_filter_set), value, "ir_cut_filter_set");
+
+        tmp = NULL;
+        get_string_from_json(&tmp, value, "auto_focus");
+        if (tmp != NULL) {
+            service_ctx.imaging_node.auto_focus = (strcasecmp(tmp, "auto") == 0) ? 1 : 0;
+            free(tmp);
+        }
+        tmp = NULL;
+        get_string_from_json(&tmp, value, "ir_cut_filter");
+        if (tmp != NULL) {
+            if (strcasecmp(tmp, "on") == 0) {
+                service_ctx.imaging_node.ir_cut_filter = IRCUT_ON;
+            } else if (strcasecmp(tmp, "off") == 0) {
+                service_ctx.imaging_node.ir_cut_filter = IRCUT_OFF;
+            } else {
+                service_ctx.imaging_node.ir_cut_filter = IRCUT_AUTO;
+            }
+            free(tmp);
+        }
+
+        // Print debug
+        log_debug("enable: %d", service_ctx.imaging_node.enable);
+        log_debug("focus_min_step: %.1f", service_ctx.imaging_node.focus_min_step);
+        log_debug("focus_max_step: %.1f", service_ctx.imaging_node.focus_max_step);
+        log_debug("focus_move_in: %s", service_ctx.imaging_node.focus_move_in);
+        log_debug("focus_move_out: %s", service_ctx.imaging_node.focus_move_out);
+        log_debug("focus_move_stop: %s", service_ctx.imaging_node.focus_move_stop);
+        log_debug("focus_jump_to_abs: %s", service_ctx.imaging_node.focus_jump_to_abs);
+        log_debug("focus_jump_to_rel: %s", service_ctx.imaging_node.focus_jump_to_rel);
+        log_debug("focus_get_position: %s", service_ctx.imaging_node.focus_get_position);
+        log_debug("focus_is_moving: %s", service_ctx.imaging_node.focus_is_moving);
+        log_debug("focus_set_auto_focus: %s", service_ctx.imaging_node.focus_set_auto_focus);
+        log_debug("auto_focus: %d", service_ctx.imaging_node.auto_focus);
+        log_debug("ir_cut_filter: %d", service_ctx.imaging_node.ir_cut_filter);
+        log_debug("ir_cut_filter_set: %s", service_ctx.imaging_node.ir_cut_filter_set);
+        log_debug("");
+    }
+
+    // Load auxiliary commands configuration from main configuration file
+    if (json_object_object_get_ex(json_file, "aux_commands", &value)) {
+        if (json_object_is_type(value, json_type_array)) {
+            size_t array_len = json_object_array_length(value);
+            log_debug("Found %zu aux command entries in configuration", array_len);
+            for (size_t i = 0; i < array_len; i++) {
+                item = json_object_array_get_idx(value, i);
+                if (!item)
+                    continue;
+
+                service_ctx.aux_commands_num++;
+                if (service_ctx.aux_commands_num >= MAX_AUX_COMMANDS) {
+                    log_error("Ignore aux command, too many aux commands, max is: %d", MAX_AUX_COMMANDS);
+                    service_ctx.aux_commands_num--;
+                } else {
+                    service_ctx.aux_commands = (aux_command_t *) realloc(service_ctx.aux_commands, service_ctx.aux_commands_num * sizeof(aux_command_t));
+
+                    // Init variables before reading
+                    service_ctx.aux_commands[service_ctx.aux_commands_num - 1].command = NULL;
+                    service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec = NULL;
+
+                    get_string_from_json(&(service_ctx.aux_commands[service_ctx.aux_commands_num - 1].command), item, "command");
+                    get_string_from_json(&(service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec), item, "exec");
+
+                    // Print debug
+                    log_debug("Aux command: %d", service_ctx.aux_commands_num - 1);
+                    log_debug("\tcommand: %s", service_ctx.aux_commands[service_ctx.aux_commands_num - 1].command);
+                    log_debug("\texec: %s", service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec);
+                    log_debug("");
+                }
+            }
+        }
+    }
+
     // Load relays configuration from main configuration file
     if (json_object_object_get_ex(json_file, "relays", &value)) {
         if (json_object_is_type(value, json_type_array)) {
@@ -1301,7 +1527,26 @@ void free_conf_file()
         if (service_ctx.ptz_node.move_left != NULL) free(service_ctx.ptz_node.move_left);
         if (service_ctx.ptz_node.is_moving != NULL) free(service_ctx.ptz_node.is_moving);
         if (service_ctx.ptz_node.get_position != NULL) free(service_ctx.ptz_node.get_position);
+        if (service_ctx.ptz_node.get_presets != NULL) free(service_ctx.ptz_node.get_presets);
     }
+
+    if (service_ctx.imaging_node.enable == 1) {
+        if (service_ctx.imaging_node.ir_cut_filter_set != NULL) free(service_ctx.imaging_node.ir_cut_filter_set);
+        if (service_ctx.imaging_node.focus_set_auto_focus != NULL) free(service_ctx.imaging_node.focus_set_auto_focus);
+        if (service_ctx.imaging_node.focus_is_moving != NULL) free(service_ctx.imaging_node.focus_is_moving);
+        if (service_ctx.imaging_node.focus_get_position != NULL) free(service_ctx.imaging_node.focus_get_position);
+        if (service_ctx.imaging_node.focus_jump_to_rel != NULL) free(service_ctx.imaging_node.focus_jump_to_rel);
+        if (service_ctx.imaging_node.focus_jump_to_abs != NULL) free(service_ctx.imaging_node.focus_jump_to_abs);
+        if (service_ctx.imaging_node.focus_move_stop != NULL) free(service_ctx.imaging_node.focus_move_stop);
+        if (service_ctx.imaging_node.focus_move_out != NULL) free(service_ctx.imaging_node.focus_move_out);
+        if (service_ctx.imaging_node.focus_move_in != NULL) free(service_ctx.imaging_node.focus_move_in);
+    }
+
+    for (i = service_ctx.aux_commands_num - 1; i >= 0; i--) {
+        if (service_ctx.aux_commands[i].exec != NULL) free(service_ctx.aux_commands[i].exec);
+        if (service_ctx.aux_commands[i].command != NULL) free(service_ctx.aux_commands[i].command);
+    }
+    if (service_ctx.aux_commands != NULL) free(service_ctx.aux_commands);
 
     for (i = service_ctx.relay_outputs_num - 1; i >= 0; i--) {
         if (service_ctx.relay_outputs[i].open != NULL) free(service_ctx.relay_outputs[i].open);
@@ -1401,6 +1646,32 @@ void print_conf_help()
     fprintf(stderr, "\tjump_to_abs=/tmp/sd/yi-hack/bin/ipc_cmd -j %%f,%%f,%%f\n");
     fprintf(stderr, "\tjump_to_rel=/tmp/sd/yi-hack/bin/ipc_cmd -J %%f,%%f,%%f\n");
     fprintf(stderr, "\tget_presets=/tmp/sd/yi-hack/script/ptz_presets.sh -a get_presets\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr, "\t#IMAGING (focus and IR cut filter)\n");
+    fprintf(stderr, "\timaging=1\n");
+    fprintf(stderr, "\tfocus_min_step=0\n");
+    fprintf(stderr, "\tfocus_max_step=1\n");
+    fprintf(stderr, "\tfocus_move_in=/usr/local/bin/focus_move -m in -s %%f\n");
+    fprintf(stderr, "\tfocus_move_out=/usr/local/bin/focus_move -m out -s %%f\n");
+    fprintf(stderr, "\tfocus_move_stop=/usr/local/bin/focus_move -m stop\n");
+    fprintf(stderr, "\tfocus_jump_to_abs=/usr/local/bin/focus_move -a %%f\n");
+    fprintf(stderr, "\tfocus_jump_to_rel=/usr/local/bin/focus_move -r %%f\n");
+    fprintf(stderr, "\tfocus_get_position=/usr/local/bin/focus_get_position\n");
+    fprintf(stderr, "\tfocus_is_moving=/usr/local/bin/focus_is_moving\n");
+    fprintf(stderr, "\tfocus_set_auto_focus=/usr/local/bin/focus_set_auto_focus -m %%s\n");
+    fprintf(stderr, "\tauto_focus=0\n");
+    fprintf(stderr, "\tir_cut_filter=auto\n");
+    fprintf(stderr, "\tir_cut_filter_set=/usr/local/bin/ir_cut_filter -m %%s\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr, "\t#AUXILIARY COMMANDS (PTZ SendAuxiliaryCommand)\n");
+    fprintf(stderr, "\taux_command=tt:IRLamp|On\n");
+    fprintf(stderr, "\taux_exec=/usr/local/bin/set_ir_led -s on\n");
+    fprintf(stderr, "\taux_command=tt:IRLamp|Off\n");
+    fprintf(stderr, "\taux_exec=/usr/local/bin/set_ir_led -s off\n");
+    fprintf(stderr, "\taux_command=tt:Wiper|On\n");
+    fprintf(stderr, "\taux_exec=/usr/local/bin/set_wiper -s on\n");
+    fprintf(stderr, "\taux_command=tt:Wiper|Off\n");
+    fprintf(stderr, "\taux_exec=/usr/local/bin/set_wiper -s off\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "\t#RELAY OUTPUTS\n");
     fprintf(stderr, "\t#Relay 0\n");

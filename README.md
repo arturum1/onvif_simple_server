@@ -159,6 +159,33 @@ jump_to_abs=/tmp/sd/yi-hack/bin/ipc_cmd -j %f,%f,%f
 jump_to_rel=/tmp/sd/yi-hack/bin/ipc_cmd -J %f,%f,%f
 get_presets=/tmp/sd/yi-hack/script/ptz_presets.sh -a get_presets
 
+#IMAGING (focus and IR cut filter)
+imaging=1
+focus_min_step=0
+focus_max_step=1
+focus_move_in=/usr/local/bin/focus_move -m in -s %f
+focus_move_out=/usr/local/bin/focus_move -m out -s %f
+focus_move_stop=/usr/local/bin/focus_move -m stop
+focus_jump_to_abs=/usr/local/bin/focus_move -a %f
+focus_jump_to_rel=/usr/local/bin/focus_move -r %f
+focus_get_position=/usr/local/bin/focus_get_position
+focus_is_moving=/usr/local/bin/focus_is_moving
+focus_set_auto_focus=/usr/local/bin/focus_set_auto_focus -m %s
+auto_focus=0
+ir_cut_filter=auto
+ir_cut_filter_set=/usr/local/bin/ir_cut_filter -m %s
+
+#AUX COMMANDS (PTZ SendAuxiliaryCommand)
+#Each aux_command starts a new entry, next aux_exec completes it
+aux_command=tt:IRLamp|On
+aux_exec=/usr/local/bin/set_ir_led -s on
+aux_command=tt:IRLamp|Off
+aux_exec=/usr/local/bin/set_ir_led -s off
+aux_command=tt:Wiper|On
+aux_exec=/usr/local/bin/set_wiper -s on
+aux_command=tt:Wiper|Off
+aux_exec=/usr/local/bin/set_wiper -s off
+
 #RELAY OUTPUTS
 #Relay 0
 idle_state=open
@@ -496,8 +523,21 @@ GotoHomePosition
 GotoPreset
 RelativeMove
 RemovePreset
+SendAuxiliaryCommand
 SetHomePosition
 SetPreset
+Stop
+```
+
+**Imaging** (requires `imaging=1` in the configuration file)
+```
+GetImagingSettings
+GetMoveOptions
+GetOptions
+GetServiceCapabilities
+GetStatus
+Move
+SetImagingSettings
 Stop
 ```
 

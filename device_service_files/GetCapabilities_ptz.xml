@@ -66,6 +66,7 @@
                 <tt:PTZ>
                     <tt:XAddr>%PTZ_SERVICE_ADDRESS%</tt:XAddr>
                 </tt:PTZ>
+                %IMAGING_CAPABILITY%
                 <tt:Extension>
                     <tt:DeviceIO>
                         <tt:XAddr>%DEVICEIO_SERVICE_ADDRESS%</tt:XAddr>

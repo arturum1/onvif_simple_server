@@ -18,7 +18,7 @@ Deps (dynamic builds): `-lz -ljson-c -lpthread -lrt` plus one crypto lib. Do not
 
 ## CGI dispatch (the server is one binary, six services)
 
-`onvif_simple_server` picks the service from the **basename of the CGI name** (or last argv): one of `device_service`, `media_service`, `media2_service`, `ptz_service`, `events_service`, `deviceio_service`. In production the httpd exposes it as symlinks into `${document-root}/onvif/` (see `extras/build.sh`). Requires `REQUEST_METHOD=POST`; reads the SOAP body from stdin, writes response to stdout.
+`onvif_simple_server` picks the service from the **basename of the CGI name** (or last argv): one of `device_service`, `media_service`, `media2_service`, `ptz_service`, `imaging_service`, `events_service`, `deviceio_service`. In production the httpd exposes it as symlinks into `${document-root}/onvif/` (see `extras/build.sh`). Requires `REQUEST_METHOD=POST`; reads the SOAP body from stdin, writes response to stdout.
 
 A URL like `http://host/onvif/device_service` must point at a file literally named `device_service`.
 
@@ -50,6 +50,7 @@ To add a method: add `<Service>_files/<Method>.xml`, then dispatch on `strcasecm
 - `move_*`, relay, and other fire-and-forget commands run via `system()` (`/bin/sh -c`). Any command that writes to **stdout corrupts the CGI response** — external commands must redirect stdout to `/dev/null` (README).
 - Read-back commands (`get_presets`, `get_position`) use `spawn_capture(cmd, buf, len, timeout_sec)` (utils.c), which captures stdout and SIGKILLs the child after the timeout. Use `spawn_capture` — not raw `popen` — for any new command that reads output.
 - PTZ zoom is optional: templates come in plain + `_nozoom` variants (e.g. `GetNodes.xml` / `GetNodes_nozoom.xml`), selected at runtime via `ptz_supports_zoom()` (`ptz_node.zoom_enable`). Keep both variants in sync. Non-zoom entries are plain `stub` templates and don't matter, but the choice is made at runtime, so both must exist for any PTZ template.
+- Focus (imaging service) and SendAuxiliaryCommand toggles are entirely config-driven: gated by `imaging=1` (imaging), `aux_command`/`aux_exec` key pairs (PTZ aux commands, capped at `MAX_AUX_COMMANDS 8`). Focus commands accept `%f`; `focus_set_auto_focus` / `ir_cut_filter_set` accept `%s`. Read-back uses `spawn_capture`. Aux command strings are validated against shell metachars before use (`is_safe_aux_command`). Aux commands are advertised in GetNode (`%AUX_COMMANDS%`, added to both zoom and nozoom variants).
 
 ## wsd_simple_server specifics
 

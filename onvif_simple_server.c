@@ -30,6 +30,7 @@
 #include "media_service.h"
 #include "media2_service.h"
 #include "ptz_service.h"
+#include "imaging_service.h"
 #include "events_service.h"
 #include "deviceio_service.h"
 #include "fault.h"
@@ -266,6 +267,7 @@ int main(int argc, char ** argv)
                 (strstr(tmp, "media_service") != NULL) ||
                 (strstr(tmp, "media2_service") != NULL) ||
                 (strstr(tmp, "ptz_service") != NULL) ||
+                (strstr(tmp, "imaging_service") != NULL) ||
                 (strstr(tmp, "events_service") != NULL) ||
                 (strstr(tmp, "deviceio_service") != NULL)) {
             tmp = argv[argc - 1];
@@ -658,8 +660,30 @@ int main(int argc, char ** argv)
                 ptz_set_home_position();
             } else if (strcasecmp(method, "RemovePreset") == 0) {
                 ptz_remove_preset();
+            } else if (strcasecmp(method, "SendAuxiliaryCommand") == 0) {
+                ptz_send_auxiliary_command();
             } else {
                 ptz_unsupported(method);
+            }
+        } else if (strcasecmp("imaging_service", prog_name) == 0) {
+            if (strcasecmp(method, "GetServiceCapabilities") == 0) {
+                imaging_get_service_capabilities();
+            } else if (strcasecmp(method, "GetImagingSettings") == 0) {
+                imaging_get_imaging_settings();
+            } else if (strcasecmp(method, "SetImagingSettings") == 0) {
+                imaging_set_imaging_settings();
+            } else if (strcasecmp(method, "GetOptions") == 0) {
+                imaging_get_options();
+            } else if (strcasecmp(method, "GetMoveOptions") == 0) {
+                imaging_get_move_options();
+            } else if (strcasecmp(method, "Move") == 0) {
+                imaging_move();
+            } else if (strcasecmp(method, "Stop") == 0) {
+                imaging_stop();
+            } else if (strcasecmp(method, "GetStatus") == 0) {
+                imaging_get_status();
+            } else {
+                imaging_unsupported(method);
             }
         } else if (strcasecmp("events_service", prog_name) == 0) {
             if (strcasecmp(method, "GetServiceCapabilities") == 0) {
