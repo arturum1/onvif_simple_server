@@ -14,7 +14,7 @@
                 </tt:Resolution>
                 <tt:Quality>10</tt:Quality>
                 <tt:RateControl>
-                    <tt:FrameRateLimit>30</tt:FrameRateLimit>
+                    <tt:FrameRateLimit>%FRAMERATE%</tt:FrameRateLimit>
                     <tt:BitrateLimit>5000</tt:BitrateLimit>
                 </tt:RateControl>
                 <tt:Multicast>

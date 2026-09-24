@@ -14,7 +14,7 @@
                 </tt:Resolution>
                 <tt:Quality>100</tt:Quality>
                 <tt:RateControl>
-                    <tt:FrameRateLimit>30</tt:FrameRateLimit>
+                    <tt:FrameRateLimit>%FRAMERATE_HIGH%</tt:FrameRateLimit>
                     <tt:EncodingInterval>1</tt:EncodingInterval>
                     <tt:BitrateLimit>%BITRATE_HIGH%</tt:BitrateLimit>
                 </tt:RateControl>
@@ -42,7 +42,7 @@
                 </tt:Resolution>
                 <tt:Quality>100</tt:Quality>
                 <tt:RateControl>
-                    <tt:FrameRateLimit>30</tt:FrameRateLimit>
+                    <tt:FrameRateLimit>%FRAMERATE_LOW%</tt:FrameRateLimit>
                     <tt:EncodingInterval>1</tt:EncodingInterval>
                     <tt:BitrateLimit>%BITRATE_LOW%</tt:BitrateLimit>
                 </tt:RateControl>

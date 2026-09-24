@@ -19,8 +19,8 @@
                         <tt:Max>40</tt:Max>
                     </tt:GovLengthRange>
                     <tt:FrameRateRange>
-                        <tt:Min>30</tt:Min>
-                        <tt:Max>30</tt:Max>
+                        <tt:Min>%FRAMERATE%</tt:Min>
+                        <tt:Max>%FRAMERATE%</tt:Max>
                     </tt:FrameRateRange>
                     <tt:EncodingIntervalRange>
                         <tt:Min>1</tt:Min>

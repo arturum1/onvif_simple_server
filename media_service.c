@@ -28,6 +28,27 @@
 
 extern service_context_t service_ctx;
 
+/*
+ * The ONVIF VideoSource models the physical sensor, which is independent of any
+ * single encoder profile. Report it from the profile with the largest frame area
+ * so a low resolution sub stream never shrinks the advertised source dimensions.
+ */
+static int get_video_source_index()
+{
+    int i, idx = 0;
+    long best = -1;
+
+    for (i = 0; i < service_ctx.profiles_num; i++) {
+        long area = (long) service_ctx.profiles[i].width * service_ctx.profiles[i].height;
+        if (area > best) {
+            best = area;
+            idx = i;
+        }
+    }
+
+    return idx;
+}
+
 int media_get_service_capabilities()
 {
     long size = cat(NULL, "media_service_files/GetServiceCapabilities.xml", 0);
@@ -39,12 +60,13 @@ int media_get_service_capabilities()
 
 int media_get_video_sources()
 {
-    // Get the video source from the 1st profile
+    // Get the video source from the profile with the largest frame area
     char stmp_w[16], stmp_h[16], stmp_fps[8];
+    int vsrc = get_video_source_index();
 
-    snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[0].width);
-    snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[0].height);
-    snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[0].framerate);
+    snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[vsrc].width);
+    snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[vsrc].height);
+    snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[vsrc].framerate);
     long size = cat(NULL, "media_service_files/GetVideoSources.xml", 6,
             "%WIDTH%", stmp_w,
             "%HEIGHT%", stmp_h,
@@ -61,10 +83,11 @@ int media_get_video_sources()
 int media_get_video_source_configurations()
 {
     char profiles_num[2], stmp_w[16], stmp_h[16];
+    int vsrc = get_video_source_index();
 
     snprintf(profiles_num, sizeof(profiles_num), "%d", service_ctx.profiles_num);
-    snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[0].width);
-    snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[0].height);
+    snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[vsrc].width);
+    snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[vsrc].height);
     long size = cat(NULL, "media_service_files/GetVideoSourceConfigurations.xml", 6,
             "%PROFILES_NUM%", profiles_num,
             "%WIDTH%", stmp_w,
@@ -90,9 +113,10 @@ int media_get_video_source_configuration()
 
     if (strncasecmp("VideoSourceConfigToken", configuration_token, 22) == 0) {
 
+        int vsrc = get_video_source_index();
         snprintf(profiles_num, sizeof(profiles_num), "%d", service_ctx.profiles_num);
-        snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[0].width);
-        snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[0].height);
+        snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[vsrc].width);
+        snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[vsrc].height);
         long size = cat(NULL, "media_service_files/GetVideoSourceConfiguration.xml", 6,
                 "%PROFILES_NUM%", profiles_num,
                 "%WIDTH%", stmp_w,
@@ -117,10 +141,11 @@ int media_get_compatible_video_source_configurations()
     // Ignore the requested token
     char profiles_num[2];
     char stmp_w[16], stmp_h[16];
+    int vsrc = get_video_source_index();
 
     snprintf(profiles_num, sizeof(profiles_num), "%d", service_ctx.profiles_num);
-    snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[0].width);
-    snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[0].height);
+    snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[vsrc].width);
+    snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[vsrc].height);
     long size = cat(NULL, "media_service_files/GetCompatibleVideoSourceConfigurations.xml", 8,
             "%PROFILES_NUM%", profiles_num,
             "%WIDTH%", stmp_w,
@@ -157,8 +182,9 @@ int media_get_video_source_configuration_options()
             (strcasecmp(service_ctx.profiles[1].name, token) == 0) ||
             (strcasecmp("VideoSourceConfigToken", token) == 0)) {
 
-        snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[0].width);
-        snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[0].height);
+        int vsrc = get_video_source_index();
+        snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[vsrc].width);
+        snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[vsrc].height);
         long size = cat(NULL, "media_service_files/GetVideoSourceConfigurationOptions.xml", 4,
                 "%WIDTH%", stmp_w,
                 "%HEIGHT%", stmp_h);
@@ -179,13 +205,15 @@ int media_get_profiles()
 {
     char profiles_num[2];
     char stmp_vsc_w[16], stmp_vsc_h[16];
-    char stmp_w[16], stmp_h[16], stmp_br[16];
+    char stmp_w[16], stmp_h[16], stmp_br[16], stmp_fps[16];
     char audio_enc_h[16], audio_enc_l[16];
+    char video_enc_h[16], video_enc_l[16];
     long size;
     int c;
     char dest_a[] = "stdout";
     char *dest;
     char min_x[256], max_x[256], min_y[256], max_y[256], min_z[256], max_z[256];
+    int vsrc = get_video_source_index();
 
     audio_enc_h[0] = '\0';
     audio_enc_l[0] = '\0';
@@ -212,8 +240,8 @@ int media_get_profiles()
                     "%PROFILE0%", service_ctx.profiles[0].name);
 
             // Get the video source configuration from the 1st profile
-            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[0].width);
-            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[0].height);
+            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[vsrc].width);
+            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[vsrc].height);
             size += cat(dest, "media_service_files/GetProfile_VSC.xml", 6,
                     "%PROFILES_NUM%", profiles_num,
                     "%VSC_WIDTH%", stmp_vsc_w,
@@ -227,13 +255,16 @@ int media_get_profiles()
             snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[0].width);
             snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[0].height);
             snprintf(stmp_br, sizeof(stmp_br), "%d", service_ctx.profiles[0].bitrate > 0 ? service_ctx.profiles[0].bitrate : 5000);
-            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 12,
+            snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[0].framerate > 0 ? service_ctx.profiles[0].framerate : 30);
+            set_video_codec(video_enc_h, 16, service_ctx.profiles[0].type, 1);
+            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 14,
                     "%PROFILE%", service_ctx.profiles[0].name,
                     "%WIDTH%", stmp_w,
                     "%HEIGHT%", stmp_h,
                     "%H264PROFILE%", "High",
                     "%BITRATE%", stmp_br,
-                    "%ENCODING%", "H264");
+                    "%FRAMERATE%", stmp_fps,
+                    "%ENCODING%", video_enc_h);
 
             if (service_ctx.profiles[0].audio_encoder != AUDIO_NONE) {
                 set_audio_codec(audio_enc_h, 16, service_ctx.profiles[0].audio_encoder, 1);
@@ -270,8 +301,8 @@ int media_get_profiles()
                     "%PROFILE0%", service_ctx.profiles[0].name);
 
             // Get the video source configuration from the 1st profile
-            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[0].width);
-            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[0].height);
+            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[vsrc].width);
+            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[vsrc].height);
             size += cat(dest, "media_service_files/GetProfile_VSC.xml", 6,
                     "%PROFILES_NUM%", profiles_num,
                     "%VSC_WIDTH%", stmp_vsc_w,
@@ -285,13 +316,16 @@ int media_get_profiles()
             snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[0].width);
             snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[0].height);
             snprintf(stmp_br, sizeof(stmp_br), "%d", service_ctx.profiles[0].bitrate > 0 ? service_ctx.profiles[0].bitrate : 5000);
-            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 12,
+            snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[0].framerate > 0 ? service_ctx.profiles[0].framerate : 30);
+            set_video_codec(video_enc_h, 16, service_ctx.profiles[0].type, 1);
+            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 14,
                     "%PROFILE%", service_ctx.profiles[0].name,
                     "%WIDTH%", stmp_w,
                     "%HEIGHT%", stmp_h,
                     "%H264PROFILE%", "High",
                     "%BITRATE%", stmp_br,
-                    "%ENCODING%", "H264");
+                    "%FRAMERATE%", stmp_fps,
+                    "%ENCODING%", video_enc_h);
 
             if (service_ctx.profiles[0].audio_encoder != AUDIO_NONE) {
 
@@ -315,8 +349,8 @@ int media_get_profiles()
                     "%PROFILE1%", service_ctx.profiles[1].name);
 
             // Get the video source configuration from the 1st profile
-            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[0].width);
-            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[0].height);
+            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[vsrc].width);
+            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[vsrc].height);
             size += cat(dest, "media_service_files/GetProfile_VSC.xml", 6,
                     "%PROFILES_NUM%", profiles_num,
                     "%VSC_WIDTH%", stmp_vsc_w,
@@ -331,13 +365,16 @@ int media_get_profiles()
             snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[1].width);
             snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[1].height);
             snprintf(stmp_br, sizeof(stmp_br), "%d", service_ctx.profiles[1].bitrate > 0 ? service_ctx.profiles[1].bitrate : 5000);
-            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 12,
+            snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[1].framerate > 0 ? service_ctx.profiles[1].framerate : 30);
+            set_video_codec(video_enc_l, 16, service_ctx.profiles[1].type, 1);
+            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 14,
                     "%PROFILE%", service_ctx.profiles[1].name,
                     "%WIDTH%", stmp_w,
                     "%HEIGHT%", stmp_h,
                     "%H264PROFILE%", "Main",
                     "%BITRATE%", stmp_br,
-                    "%ENCODING%", "H264");
+                    "%FRAMERATE%", stmp_fps,
+                    "%ENCODING%", video_enc_l);
 
             if (service_ctx.profiles[1].audio_encoder != AUDIO_NONE) {
 
@@ -373,14 +410,16 @@ int media_get_profile()
 {
     char profiles_num[2];
     char stmp_vsc_w[16], stmp_vsc_h[16];
-    char stmp_w[16], stmp_h[16], stmp_br[16];
+    char stmp_w[16], stmp_h[16], stmp_br[16], stmp_fps[16];
     const char *profile_token = get_element("ProfileToken", "Body");
     char audio_enc_h[16], audio_enc_l[16];
+    char video_enc_h[16], video_enc_l[16];
     long size;
     int c;
     char dest_a[] = "stdout";
     char *dest;
     char min_x[256], max_x[256], min_y[256], max_y[256], min_z[256], max_z[256];
+    int vsrc = get_video_source_index();
 
     if (profile_token == NULL) {
         send_fault("media_service", "Sender", "ter:InvalidArgVal", "ter:NoProfile", "No profile", "The requested profile token does not exist");
@@ -411,8 +450,8 @@ int media_get_profile()
                     "%PROFILE%", profile_token);
 
             // Get the video source configuration from the 1st profile
-            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[0].width);
-            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[0].height);
+            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[vsrc].width);
+            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[vsrc].height);
             size += cat(dest, "media_service_files/GetProfile_VSC.xml", 6,
                     "%PROFILES_NUM%", profiles_num,
                     "%VSC_WIDTH%", stmp_vsc_w,
@@ -426,13 +465,16 @@ int media_get_profile()
             snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[0].width);
             snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[0].height);
             snprintf(stmp_br, sizeof(stmp_br), "%d", service_ctx.profiles[0].bitrate > 0 ? service_ctx.profiles[0].bitrate : 5000);
-            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 12,
+            snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[0].framerate > 0 ? service_ctx.profiles[0].framerate : 30);
+            set_video_codec(video_enc_h, 16, service_ctx.profiles[0].type, 1);
+            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 14,
                     "%PROFILE%", profile_token,
                     "%WIDTH%", stmp_w,
                     "%HEIGHT%", stmp_h,
                     "%H264PROFILE%", "High",
                     "%BITRATE%", stmp_br,
-                    "%ENCODING%", "H264");
+                    "%FRAMERATE%", stmp_fps,
+                    "%ENCODING%", video_enc_h);
 
             if (service_ctx.profiles[0].audio_encoder != AUDIO_NONE) {
 
@@ -471,8 +513,8 @@ int media_get_profile()
                     "%PROFILE%", profile_token);
 
             // Get the video source configuration from the 1st profile
-            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[0].width);
-            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[0].height);
+            snprintf(stmp_vsc_w, sizeof(stmp_vsc_w), "%d", service_ctx.profiles[vsrc].width);
+            snprintf(stmp_vsc_h, sizeof(stmp_vsc_h), "%d", service_ctx.profiles[vsrc].height);
             size += cat(dest, "media_service_files/GetProfile_VSC.xml", 6,
                     "%PROFILES_NUM%", profiles_num,
                     "%VSC_WIDTH%", stmp_vsc_w,
@@ -486,13 +528,16 @@ int media_get_profile()
             snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[1].width);
             snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[1].height);
             snprintf(stmp_br, sizeof(stmp_br), "%d", service_ctx.profiles[1].bitrate > 0 ? service_ctx.profiles[1].bitrate : 5000);
-            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 12,
+            snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[1].framerate > 0 ? service_ctx.profiles[1].framerate : 30);
+            set_video_codec(video_enc_l, 16, service_ctx.profiles[1].type, 1);
+            size += cat(dest, "media_service_files/GetProfile_VEC.xml", 14,
                     "%PROFILE%", profile_token,
                     "%WIDTH%", stmp_w,
                     "%HEIGHT%", stmp_h,
                     "%H264PROFILE%", "Main",
                     "%BITRATE%", stmp_br,
-                    "%ENCODING%", "H264");
+                    "%FRAMERATE%", stmp_fps,
+                    "%ENCODING%", video_enc_l);
 
             if (service_ctx.profiles[1].audio_encoder != AUDIO_NONE) {
 
@@ -537,27 +582,32 @@ int media_get_video_encoder_configurations()
     char stmp_w_l[16], stmp_h_l[16];
     char stmp_w_h[16], stmp_h_h[16];
     char stmp_br_h[16], stmp_br_l[16];
+    char stmp_fps_h[16], stmp_fps_l[16];
 
     if (service_ctx.profiles_num == 1) {
         snprintf(stmp_w_h, sizeof(stmp_w_h), "%d", service_ctx.profiles[0].width);
         snprintf(stmp_h_h, sizeof(stmp_h_h), "%d", service_ctx.profiles[0].height);
         snprintf(stmp_br_h, sizeof(stmp_br_h), "%d", service_ctx.profiles[0].bitrate > 0 ? service_ctx.profiles[0].bitrate : 5000);
-        const char *enc_h = "H264";
+        snprintf(stmp_fps_h, sizeof(stmp_fps_h), "%d", service_ctx.profiles[0].framerate > 0 ? service_ctx.profiles[0].framerate : 30);
+        char enc_h[16];
+        set_video_codec(enc_h, 16, service_ctx.profiles[0].type, 1);
         char *tmpl = "media_service_files/GetVideoEncoderConfigurations_high.xml";
-        long size = cat(NULL, tmpl, 10,
+        long size = cat(NULL, tmpl, 12,
                 "%PROFILE0%", service_ctx.profiles[0].name,
                 "%WIDTH_HIGH%", stmp_w_h,
                 "%HEIGHT_HIGH%", stmp_h_h,
                 "%BITRATE%", stmp_br_h,
+                "%FRAMERATE%", stmp_fps_h,
                 "%ENCODING%", enc_h);
 
         output_http_headers(size);
 
-        return cat("stdout", tmpl, 10,
+        return cat("stdout", tmpl, 12,
                 "%PROFILE0%", service_ctx.profiles[0].name,
                 "%WIDTH_HIGH%", stmp_w_h,
                 "%HEIGHT_HIGH%", stmp_h_h,
                 "%BITRATE%", stmp_br_h,
+                "%FRAMERATE%", stmp_fps_h,
                 "%ENCODING%", enc_h);
 
     } else if (service_ctx.profiles_num == 2) {
@@ -567,10 +617,14 @@ int media_get_video_encoder_configurations()
         snprintf(stmp_h_l, sizeof(stmp_h_l), "%d", service_ctx.profiles[1].height);
         snprintf(stmp_br_h, sizeof(stmp_br_h), "%d", service_ctx.profiles[0].bitrate > 0 ? service_ctx.profiles[0].bitrate : 5000);
         snprintf(stmp_br_l, sizeof(stmp_br_l), "%d", service_ctx.profiles[1].bitrate > 0 ? service_ctx.profiles[1].bitrate : 5000);
-        const char *enc_h = "H264";
-        const char *enc_l = "H264";
+        snprintf(stmp_fps_h, sizeof(stmp_fps_h), "%d", service_ctx.profiles[0].framerate > 0 ? service_ctx.profiles[0].framerate : 30);
+        snprintf(stmp_fps_l, sizeof(stmp_fps_l), "%d", service_ctx.profiles[1].framerate > 0 ? service_ctx.profiles[1].framerate : 30);
+        char enc_h[16];
+        char enc_l[16];
+        set_video_codec(enc_h, 16, service_ctx.profiles[0].type, 1);
+        set_video_codec(enc_l, 16, service_ctx.profiles[1].type, 1);
         char *tmpl = "media_service_files/GetVideoEncoderConfigurations_both.xml";
-        long size = cat(NULL, tmpl, 20,
+        long size = cat(NULL, tmpl, 24,
                     "%PROFILE0%", service_ctx.profiles[0].name,
                     "%PROFILE1%", service_ctx.profiles[1].name,
                     "%WIDTH_HIGH%", stmp_w_h,
@@ -579,12 +633,14 @@ int media_get_video_encoder_configurations()
                     "%HEIGHT_LOW%", stmp_h_l,
                     "%BITRATE_HIGH%", stmp_br_h,
                     "%BITRATE_LOW%", stmp_br_l,
+                    "%FRAMERATE_HIGH%", stmp_fps_h,
+                    "%FRAMERATE_LOW%", stmp_fps_l,
                     "%ENCODING_HIGH%", enc_h,
                     "%ENCODING_LOW%", enc_l);
 
         output_http_headers(size);
 
-        return cat("stdout", tmpl, 20,
+        return cat("stdout", tmpl, 24,
                     "%PROFILE0%", service_ctx.profiles[0].name,
                     "%PROFILE1%", service_ctx.profiles[1].name,
                     "%WIDTH_HIGH%", stmp_w_h,
@@ -593,6 +649,8 @@ int media_get_video_encoder_configurations()
                     "%HEIGHT_LOW%", stmp_h_l,
                     "%BITRATE_HIGH%", stmp_br_h,
                     "%BITRATE_LOW%", stmp_br_l,
+                    "%FRAMERATE_HIGH%", stmp_fps_h,
+                    "%FRAMERATE_LOW%", stmp_fps_l,
                     "%ENCODING_HIGH%", enc_h,
                     "%ENCODING_LOW%", enc_l);
     }
@@ -603,6 +661,7 @@ int media_get_video_encoder_configuration()
     char stmp_w_l[16], stmp_h_l[16];
     char stmp_w_h[16], stmp_h_h[16];
     char stmp_br[16];
+    char stmp_fps[16];
     char vec_token[128];
     const char *configuration_token = get_element("ConfigurationToken", "Body");
 
@@ -617,24 +676,28 @@ int media_get_video_encoder_configuration()
         snprintf(stmp_w_h, sizeof(stmp_w_h), "%d", service_ctx.profiles[0].width);
         snprintf(stmp_h_h, sizeof(stmp_h_h), "%d", service_ctx.profiles[0].height);
         snprintf(stmp_br, sizeof(stmp_br), "%d", service_ctx.profiles[0].bitrate > 0 ? service_ctx.profiles[0].bitrate : 5000);
-        const char *enc0 = "H264";
+        snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[0].framerate > 0 ? service_ctx.profiles[0].framerate : 30);
+        char enc0[16];
+        set_video_codec(enc0, 16, service_ctx.profiles[0].type, 1);
         char *tmpl = "media_service_files/GetVideoEncoderConfiguration.xml";
-        long size = cat(NULL, tmpl, 12,
+        long size = cat(NULL, tmpl, 14,
                 "%PROFILE%", service_ctx.profiles[0].name,
                 "%WIDTH%", stmp_w_h,
                 "%HEIGHT%", stmp_h_h,
                 "%PROFILE_TYPE%", "High",
                 "%BITRATE%", stmp_br,
+                "%FRAMERATE%", stmp_fps,
                 "%ENCODING%", enc0);
 
         output_http_headers(size);
 
-        return cat("stdout", tmpl, 12,
+        return cat("stdout", tmpl, 14,
                 "%PROFILE%", service_ctx.profiles[0].name,
                 "%WIDTH%", stmp_w_h,
                 "%HEIGHT%", stmp_h_h,
                 "%PROFILE_TYPE%", "High",
                 "%BITRATE%", stmp_br,
+                "%FRAMERATE%", stmp_fps,
                 "%ENCODING%", enc0);
 
     }
@@ -645,24 +708,28 @@ int media_get_video_encoder_configuration()
             snprintf(stmp_w_l, sizeof(stmp_w_l), "%d", service_ctx.profiles[1].width);
             snprintf(stmp_h_l, sizeof(stmp_h_l), "%d", service_ctx.profiles[1].height);
             snprintf(stmp_br, sizeof(stmp_br), "%d", service_ctx.profiles[1].bitrate > 0 ? service_ctx.profiles[1].bitrate : 5000);
-            const char *enc1 = "H264";
+            snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[1].framerate > 0 ? service_ctx.profiles[1].framerate : 30);
+            char enc1[16];
+            set_video_codec(enc1, 16, service_ctx.profiles[1].type, 1);
             char *tmpl = "media_service_files/GetVideoEncoderConfiguration.xml";
-            long size = cat(NULL, tmpl, 12,
+            long size = cat(NULL, tmpl, 14,
                     "%PROFILE%", service_ctx.profiles[1].name,
                     "%WIDTH%", stmp_w_l,
                     "%HEIGHT%", stmp_h_l,
                     "%PROFILE_TYPE%", "Main",
                     "%BITRATE%", stmp_br,
+                    "%FRAMERATE%", stmp_fps,
                     "%ENCODING%", enc1);
 
             output_http_headers(size);
 
-            return cat("stdout", tmpl, 12,
+            return cat("stdout", tmpl, 14,
                     "%PROFILE%", service_ctx.profiles[1].name,
                     "%WIDTH%", stmp_w_l,
                     "%HEIGHT%", stmp_h_l,
                     "%PROFILE_TYPE%", "Main",
                     "%BITRATE%", stmp_br,
+                    "%FRAMERATE%", stmp_fps,
                     "%ENCODING%", enc1);
         }
     }
@@ -685,7 +752,8 @@ int media_get_compatible_video_encoder_configurations()
 
         snprintf(stmp_w_h, sizeof(stmp_w_h), "%d", service_ctx.profiles[0].width);
         snprintf(stmp_h_h, sizeof(stmp_h_h), "%d", service_ctx.profiles[0].height);
-        const char *cenc0 = "H264";
+        char cenc0[16];
+        set_video_codec(cenc0, 16, service_ctx.profiles[0].type, 1);
         char *tmpl = "media_service_files/GetCompatibleVideoEncoderConfigurations.xml";
         long size = cat(NULL, tmpl, 10,
                 "%PROFILE%", profile_token,
@@ -708,7 +776,8 @@ int media_get_compatible_video_encoder_configurations()
 
         snprintf(stmp_w_l, sizeof(stmp_w_l), "%d", service_ctx.profiles[1].width);
         snprintf(stmp_h_l, sizeof(stmp_h_l), "%d", service_ctx.profiles[1].height);
-        const char *cenc1 = "H264";
+        char cenc1[16];
+        set_video_codec(cenc1, 16, service_ctx.profiles[1].type, 1);
         char *tmpl = "media_service_files/GetCompatibleVideoEncoderConfigurations.xml";
         long size = cat(NULL, tmpl, 10,
                 "%PROFILE%", profile_token,
@@ -733,7 +802,7 @@ int media_get_compatible_video_encoder_configurations()
 
 int media_get_video_encoder_configuration_options()
 {
-    char stmp_w[16], stmp_h[16];
+    char stmp_w[16], stmp_h[16], stmp_fps[16];
     const char *configuration_token = get_element("ConfigurationToken", "Body");
     const char *profile_token = get_element("ProfileToken", "Body");
     char vec_token[128];
@@ -759,32 +828,38 @@ int media_get_video_encoder_configuration_options()
 
         snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[0].width);
         snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[0].height);
-        long size = cat(NULL, "media_service_files/GetVideoEncoderConfigurationOptions.xml", 6,
+        snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[0].framerate > 0 ? service_ctx.profiles[0].framerate : 30);
+        long size = cat(NULL, "media_service_files/GetVideoEncoderConfigurationOptions.xml", 8,
                 "%WIDTH%", stmp_w,
                 "%HEIGHT%", stmp_h,
+                "%FRAMERATE%", stmp_fps,
                 "%PROFILE%", "High");
 
         output_http_headers(size);
 
-        return cat("stdout", "media_service_files/GetVideoEncoderConfigurationOptions.xml", 6,
+        return cat("stdout", "media_service_files/GetVideoEncoderConfigurationOptions.xml", 8,
                 "%WIDTH%", stmp_w,
                 "%HEIGHT%", stmp_h,
+                "%FRAMERATE%", stmp_fps,
                 "%PROFILE%", "High");
 
     } else if ((service_ctx.profiles_num == 2) && profile_idx == 1) {
 
         snprintf(stmp_w, sizeof(stmp_w), "%d", service_ctx.profiles[1].width);
         snprintf(stmp_h, sizeof(stmp_h), "%d", service_ctx.profiles[1].height);
-        long size = cat(NULL, "media_service_files/GetVideoEncoderConfigurationOptions.xml", 6,
+        snprintf(stmp_fps, sizeof(stmp_fps), "%d", service_ctx.profiles[1].framerate > 0 ? service_ctx.profiles[1].framerate : 30);
+        long size = cat(NULL, "media_service_files/GetVideoEncoderConfigurationOptions.xml", 8,
                 "%WIDTH%", stmp_w,
                 "%HEIGHT%", stmp_h,
+                "%FRAMERATE%", stmp_fps,
                 "%PROFILE%", "Main");
 
         output_http_headers(size);
 
-        return cat("stdout", "media_service_files/GetVideoEncoderConfigurationOptions.xml", 6,
+        return cat("stdout", "media_service_files/GetVideoEncoderConfigurationOptions.xml", 8,
                 "%WIDTH%", stmp_w,
                 "%HEIGHT%", stmp_h,
+                "%FRAMERATE%", stmp_fps,
                 "%PROFILE%", "Main");
 
     } else {
