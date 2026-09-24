@@ -29,7 +29,7 @@ ifeq ($(STRIP), )
     STRIP=echo
 endif
 
-all: onvif_simple_server onvif_notify_server wsd_simple_server
+all: onvif_simple_server onvif_notify_server wsd_simple_server onvif_gateway
 
 log.o: log.c $(HEADERS)
 	$(CC) -c $< -std=c99 -fPIC -Os $(INCLUDE) -o $@
@@ -52,6 +52,10 @@ wsd_simple_server: $(OBJECTS_W)
 	$(CC) $(OBJECTS_W) $(LIBS_W) -fPIC -Os -o $@
 	$(STRIP) $@
 
+onvif_gateway: onvif_gateway.c
+	$(CC) -Os -o $@ onvif_gateway.c
+	$(STRIP) $@
+
 .PHONY: all clean test
 
 # Build and run unit tests using the native host compiler.
@@ -68,6 +72,7 @@ clean:
 	rm -f onvif_simple_server
 	rm -f onvif_notify_server
 	rm -f wsd_simple_server
+	rm -f onvif_gateway
 	rm -f test/test_utils
 	rm -f $(OBJECTS_O)
 	rm -f $(OBJECTS_N)

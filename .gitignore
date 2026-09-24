@@ -1,0 +1,15 @@
+# make outputs
+/onvif_simple_server
+/onvif_notify_server
+/wsd_simple_server
+/onvif_gateway
+/test/test_utils
+
+# extras/build.sh artifacts
+/extras/_install/
+/extras/lighttpd*/
+/extras/mbedtls/
+/extras/zlib/
+/extras/json-c/
+/extras/wolfssl/
+/extras/libz/
