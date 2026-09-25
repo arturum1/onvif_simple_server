@@ -36,11 +36,23 @@
  *   -c  config passed on to the CGI (default /usr/local/etc/onvif_simple_server.conf)
  *   -d  chdir before exec            (default current directory)
  *   -t  child timeout in seconds     (default 10)
+ *
+ * Extra route:  GET /ptz?act=<name>&speed=<1..63>&number=<n>
+ * Bridges the stock Xiongmai web UI's PTZ panel to ptzctl (the same binary
+ * the ONVIF PTZ hooks call).  "act" values: up/down/left/right, zoomin,
+ * zoomout, focusin (near), focusout (far), stop, home, preset-set,
+ * preset-goto, preset-del, hscan/vscan (no-op).  Speed is mapped to the
+ * ptzctl 0..1 scale as speed/63; preset numbers are shifted +1 (stock UI is
+ * 0-based, ptzctl is 1-based).  Response body is discarded into the hidden
+ * frame, so we always answer 200.  ptzctl is located via $PTZCTL_BIN
+ * (default /mnt/mtd/ipc/onvifd/bin/ptzctl); PELCO_DEBUG=1 is set in the
+ * child when $PTZ_DEBUG is set for the gateway.
  */
 
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
@@ -94,6 +106,195 @@ static void http_error(int fd, int code)
 }
 
 static char resp_buf[MAX_RESP];
+
+/* --------------------------------------------------------- /ptz bridge -- */
+
+static void reply_ok(int fd)
+{
+    static const char okhead[] =
+        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n"
+        "Content-Length: 2\r\nConnection: close\r\n\r\n"
+        "ok\n";
+    write(fd, okhead, sizeof(okhead) - 1);
+    shutdown(fd, SHUT_RDWR);
+}
+
+static int hexval(int c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static void url_decode(char *s)
+{
+    unsigned char *dst = (unsigned char *)s, *src = dst;
+    while (*src) {
+        if (*src == '%' && src[1] && src[2]) {
+            int hi = hexval(src[1]), lo = hexval(src[2]);
+            if (hi >= 0 && lo >= 0) {
+                *dst++ = (unsigned char)(hi * 16 + lo);
+                src += 3;
+                continue;
+            }
+        }
+        *dst++ = (unsigned char)((*src == '+') ? ' ' : *src);
+        src++;
+    }
+    *dst = '\0';
+}
+
+/* Run ptzctl in a child without a shell; the exit status may be ignored.
+ * The child's stdout/stderr go to /dev/null so it can never dirty the
+ * HTTP response stream. */
+static int ptz_exec(char *const argv[], int debug)
+{
+    pid_t pid;
+    int st;
+
+    pid = fork();
+    if (pid < 0)
+        return -1;
+    if (pid == 0) {
+        const char *tfile = getenv("PTZ_TRACE");
+        int nfd = open("/dev/null", O_WRONLY);
+        if (nfd >= 0) {
+            dup2(nfd, 1);
+            dup2(nfd, 2);
+            if (nfd > 2)
+                close(nfd);
+        }
+        /* NOTE: children inherit our environ (musl execv ignores its envp
+         * argument), so per-child overrides must go through setenv().
+         * PELCO_DEV / RS485_DIR_DEV are inherited as-is and ptzctl's own
+         * defaults (/dev/ttyAMA1 + /dev/rs485) are correct for this camera. */
+        if (debug)
+            setenv("PELCO_DEBUG", "1", 1);
+        else
+            unsetenv("PELCO_DEBUG");
+        if (tfile && tfile[0])
+            setenv("PELCO_TRACE_FILE", tfile, 1);
+        execv(argv[0], argv);
+        _exit(127);
+    }
+    waitpid(pid, &st, 0);
+    return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+}
+
+static const char *web_to_move(const char *act)
+{
+    if (!strcmp(act, "up"))     return "up";
+    if (!strcmp(act, "down"))   return "down";
+    if (!strcmp(act, "left"))   return "left";
+    if (!strcmp(act, "right"))  return "right";
+    if (!strcmp(act, "zoomin")) return "zoom-in";
+    if (!strcmp(act, "zoomout")) return "zoom-out";
+    return NULL;
+}
+
+static void run_ptz(int fd, const char *query)
+{
+    const char *bin = getenv("PTZCTL_BIN");
+    static char act[24], spd[24], num[24];
+    char np[16];
+    double sval;
+    int n, debug = getenv("PTZ_DEBUG") != NULL;
+    const char *p = query;
+
+    if (!bin || !bin[0])
+        bin = "/mnt/mtd/ipc/onvifd/bin/ptzctl";
+
+    act[0] = spd[0] = num[0] = '\0';
+    while (p && *p) {
+        const char *amp = strchr(p, '&');
+        size_t tlen = amp ? (size_t)(amp - p) : strlen(p);
+        char tok[64];
+        char *name, *val;
+        char *eq;
+        if (tlen == 0) { p = amp ? amp + 1 : NULL; continue; }
+        if (tlen >= sizeof(tok))
+            tlen = sizeof(tok) - 1;
+        memcpy(tok, p, tlen);
+        tok[tlen] = '\0';
+        eq = strchr(tok, '=');
+        if (!eq) { p = amp ? amp + 1 : NULL; continue; }
+        *eq = '\0';
+        name = tok;
+        val = eq + 1;
+        url_decode(val);
+        if (!strcmp(name, "act") && *val)
+            snprintf(act, sizeof(act), "%s", val);
+        else if (!strcmp(name, "speed") && *val && strspn(val, "0123456789") == strlen(val))
+            snprintf(spd, sizeof(spd), "%s", val);
+        else if (!strcmp(name, "number") && *val && strspn(val, "0123456789") == strlen(val))
+            snprintf(num, sizeof(num), "%s", val);
+        p = amp ? amp + 1 : NULL;
+    }
+
+    if (!act[0]) { reply_ok(fd); return; }     /* empty/health request */
+
+    fprintf(stderr, "ptz: act=%s spd=%s num=%s\n", act, spd, num);
+
+    if (!strcmp(act, "hscan") || !strcmp(act, "vscan")) { reply_ok(fd); return; }
+
+    if (!strcmp(act, "stop")) {
+        char *a1[] = { (char *)bin, "move", "-m", "stop", NULL };
+        char *a2[] = { (char *)bin, "focus", "-m", "stop", NULL };
+        ptz_exec(a1, debug);
+        ptz_exec(a2, debug);
+        reply_ok(fd);
+        return;
+    }
+
+    if (!strcmp(act, "home")) {
+        char *a[] = { (char *)bin, "home", NULL };
+        ptz_exec(a, debug);
+        reply_ok(fd);
+        return;
+    }
+
+    if (!strcmp(act, "preset-set") || !strcmp(act, "preset-goto") ||
+        !strcmp(act, "preset-del")) {
+        const char *pa = !strcmp(act, "preset-set") ? "add"
+                       : !strcmp(act, "preset-goto") ? "goto" : "del";
+        n = num[0] ? atoi(num) : 0;
+        if (n < 0) n = 0;
+        if (n > 98) n = 98;
+        snprintf(np, sizeof(np), "%d", n + 1);
+        {
+            char *a[] = { (char *)bin, "preset", "-a", (char *)pa, "-n", np, NULL };
+            ptz_exec(a, debug);
+        }
+        reply_ok(fd);
+        return;
+    }
+
+    {
+        const char *sub, *m = web_to_move(act);
+        if (!m) {
+            if (!strcmp(act, "focusin"))  { sub = "focus"; m = "near"; }
+            else if (!strcmp(act, "focusout")) { sub = "focus"; m = "far"; }
+            else { reply_ok(fd); return; }      /* unknown -> silent 200 */
+        } else {
+            sub = "move";
+        }
+        sval = 1.0;
+        if (spd[0]) {
+            int sp = atoi(spd);
+            if (sp < 0) sp = 0;
+            if (sp > 63) sp = 63;
+            sval = sp / 63.0;
+        }
+        snprintf(spd, sizeof(spd), "%.3f", sval);
+        {
+            char *a[] = { (char *)bin, (char *)sub, "-m", (char *)m,
+                          "-s", spd, NULL };
+            ptz_exec(a, debug);
+        }
+    }
+    reply_ok(fd);
+}
 
 static int run_soap(int fd, const char *method, const char *uri,
                     const char *client_ip, uint16_t client_port,
@@ -360,10 +561,13 @@ int main(int argc, char **argv)
             char *sp = uri;
             while (*sp && *sp != ' ' && *sp != '?') sp++;
             if (*sp == '?') {
+                char *q;
                 qs = sp + 1;
                 *sp = '\0';
-                while (*sp && *sp != ' ') sp++;
-                *sp = '\0';
+                /* strip " HTTP/1.1" that still trails the query string */
+                for (q = qs; *q && *q != ' '; q++)
+                    ;
+                *q = '\0';
             } else if (*sp == ' ') {
                 *sp = '\0';
             }
@@ -392,6 +596,17 @@ int main(int argc, char **argv)
                     ct = val;
                 cur = nl + 1;
             }
+        }
+
+        /* Extra route: GET /ptz (stock web UI PTZ panel bridge). */
+        if (uri[0] == '/' && !strncmp(uri, "/ptz", 4)
+                && (uri[4] == '\0' || uri[4] == '/')) {
+            if (strcmp(method, "GET") != 0)
+                http_error(cfd, 405);
+            else
+                run_ptz(cfd, qs);
+            close(cfd);
+            continue;
         }
 
         /* Service token from /onvif/<service>. */
