@@ -372,7 +372,10 @@ static int aux_list_load(void)
  * "ircut\tIrCutFilter".  The device is the only source of truth here. */
 static void act_features(int fd)
 {
-    char body[4096];
+    /* Sized so MAX_AUX_COMMANDS entries at the maximum label lengths
+     * (12 * ~350) cannot be silently truncated - a short read here would
+     * just drop buttons off the panel with no error anywhere. */
+    char body[8192];
     size_t off = 0;
     int i, n;
 

@@ -76,7 +76,13 @@ typedef struct {
     char *exec;
 } aux_command_t;
 
-#define MAX_AUX_COMMANDS 8
+/* Bumped from upstream's 8: the web panel is a generic front end for every
+ * aux channel, so spare channels are worth advertising.  This only gates the
+ * two bounds checks in conf.c (the array is heap-allocated), but it is NOT the
+ * real ceiling - GetNode substitutes the whole block into one MAX_CAT_LEN
+ * (2048) line, at ~68 bytes + label per command.  12 entries stay under that
+ * even with 60-char labels. */
+#define MAX_AUX_COMMANDS 12
 
 typedef enum {
     IRCUT_AUTO,
