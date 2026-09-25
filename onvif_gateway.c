@@ -109,13 +109,34 @@ static char resp_buf[MAX_RESP];
 
 /* --------------------------------------------------------- /ptz bridge -- */
 
+/* The /ptz route is served from a different origin than the stock web UI
+ * (port 80 vs 8080), so the panel's XHR for act=features needs this header to
+ * be readable at all.  Harmless here: every /ptz act is a GET, and the ones
+ * that change hardware only reach commands the device itself advertises. */
+#define CORS "Access-Control-Allow-Origin: *\r\n"
+
 static void reply_ok(int fd)
 {
     static const char okhead[] =
-        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n"
+        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" CORS
         "Content-Length: 2\r\nConnection: close\r\n\r\n"
         "ok\n";
     write(fd, okhead, sizeof(okhead) - 1);
+    shutdown(fd, SHUT_RDWR);
+}
+
+/* Reply carrying a text/plain payload (act=features). */
+static void reply_text(int fd, const char *body)
+{
+    char head[256];
+    int n = snprintf(head, sizeof(head),
+                     "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" CORS
+                     "Cache-Control: no-store\r\nContent-Length: %zu\r\n"
+                     "Connection: close\r\n\r\n", strlen(body));
+    if (n <= 0)
+        return;
+    write(fd, head, (size_t)n);
+    write(fd, body, strlen(body));
     shutdown(fd, SHUT_RDWR);
 }
 
@@ -193,10 +214,257 @@ static const char *web_to_move(const char *act)
     return NULL;
 }
 
+/* ------------------------------------------------- conf-driven features -- */
+
+/* onvif_simple_server.conf is the feature registry: aux_command/aux_exec
+ * pairs and ir_cut_filter_set are what the device advertises over ONVIF and
+ * what it is willing to execute.  Rather than hardcoding a command list in
+ * this bridge, /ptz speaks ONVIF to the CGI we already fork, so the stock web
+ * UI panel stays in sync with the conf automatically - and any other project
+ * reusing this gateway can change its whole feature set in one file. */
+
+struct gw_cfg {
+    const char *binary;
+    const char *conf;
+    const char *chdir_dir;
+    int timeout_s;
+    char client_ip[80];
+    uint16_t client_port;
+};
+static struct gw_cfg gw;
+
+/* run_soap() is defined below run_ptz(); declared here for the self-call. */
+static int run_soap(int fd, const char *method, const char *uri,
+                    const char *client_ip, uint16_t client_port,
+                    const char *service, const char *content_type,
+                    const char *query, const char *body, size_t body_len,
+                    int timeout_s, const char *binary, const char *conf,
+                    const char *chdir_dir, uint16_t local_port);
+
+#define SOAP_ENV_OPEN "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body>"
+#define SOAP_ENV_CLOSE "</soap:Body></soap:Envelope>"
+
+/* Run one SOAP method through the CGI and copy the response body (whatever
+ * follows the HTTP header block run_soap() produced) into out.
+ * Returns 0 on success. */
+static int onvif_call(const char *service, const char *inner,
+                      char *out, size_t outcap)
+{
+    static char req[4096];
+    int n, devnull;
+    const char *sep, *b;
+    size_t blen;
+
+    n = snprintf(req, sizeof(req), SOAP_ENV_OPEN "%s" SOAP_ENV_CLOSE, inner);
+    if (n < 0 || (size_t)n >= sizeof(req))
+        return -1;
+
+    /* run_soap() writes the full response to fd, but the body it builds for
+     * us stays in resp_buf, so the fd only has to be somewhere harmless. */
+    devnull = open("/dev/null", O_WRONLY);
+    if (run_soap(devnull < 0 ? -1 : devnull, "POST", "/onvif", gw.client_ip,
+                 gw.client_port, service, "application/soap+xml", "",
+                 req, (size_t)n, gw.timeout_s, gw.binary, gw.conf,
+                 gw.chdir_dir, 0) != 0) {
+        if (devnull >= 0)
+            close(devnull);
+        return -1;
+    }
+    if (devnull >= 0)
+        close(devnull);
+
+    sep = strstr(resp_buf, "\r\n\r\n");
+    b = sep ? sep + 4 : resp_buf;
+    blen = strlen(b);
+    while (blen && (b[blen - 1] == '\n' || b[blen - 1] == '\r'))
+        blen--;
+    if (outcap == 0)
+        return -1;
+    if (blen >= outcap)
+        blen = outcap - 1;
+    memcpy(out, b, blen);
+    out[blen] = '\0';
+    return 0;
+}
+
+#define MAX_AUX_ENTRIES 32
+struct aux_entry {
+    char cmd[256];        /* the exact value the device advertises */
+    char name[64];        /* label for the UI */
+    char action[24];      /* "On"/"Off"/... - a stateful vs a tap button */
+};
+static struct aux_entry g_aux[MAX_AUX_ENTRIES];
+static int g_aux_num;
+static int g_aux_loaded;  /* conf re-read per request, so cache per process */
+
+/* Mirror of ptz_service.c's is_safe_aux_command(): an advertised value is
+ * forwarded into a SOAP body verbatim, so refuse anything that is not
+ * already safe to execute. */
+static int aux_value_ok(const char *s)
+{
+    if (!s || !*s || strlen(s) > 255)
+        return 0;
+    return strspn(s, "abcdefghijklmnopqrstuvwxyz"
+                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                     "_.-:|") == strlen(s);
+}
+
+/* Scrape the <tt:AuxiliaryCommands> values out of a GetNode response.  The
+ * conf value doubles as the ONVIF match key and the UI label; upstream's
+ * convention is "tt:<Feature>|<Action>" (see onvif_simple_server.conf.example),
+ * so split on the last '|' for the label.  A value with no '|' is a plain
+ * tap button. */
+static int aux_list_load(void)
+{
+    static const char otag[] = "<tt:AuxiliaryCommands>";
+    static const char ctag[] = "</tt:AuxiliaryCommands>";
+    static char resp[16384];
+    char *p = resp, *v, *end, *val, *bar;
+
+    g_aux_num = 0;
+    if (onvif_call("ptz_service",
+                   "<GetNode xmlns=\"http://www.onvif.org/ver20/ptz/wsdl\">"
+                   "<NodeToken>PTZNodeToken</NodeToken></GetNode>",
+                   resp, sizeof(resp)) != 0)
+        return -1;
+
+    while ((p = strstr(p, otag)) != NULL) {
+        p += sizeof(otag) - 1;
+        end = strstr(p, ctag);
+        if (!end)
+            break;
+        *end = '\0';
+        v = p;
+        p = end + sizeof(ctag) - 1;   /* advance now: the checks below may skip */
+        if (g_aux_num >= MAX_AUX_ENTRIES)
+            break;
+        if (!aux_value_ok(v))
+            continue;
+
+        /* Copy the advertised value out before splitting the label: the split
+         * writes a NUL into the shared response buffer. */
+        snprintf(g_aux[g_aux_num].cmd, sizeof(g_aux[g_aux_num].cmd), "%s", v);
+
+        val = v;
+        if (strncmp(val, "tt:", 3) == 0)
+            val += 3;
+        bar = strrchr(val, '|');
+        if (bar) {
+            *bar = '\0';
+            snprintf(g_aux[g_aux_num].name, sizeof(g_aux[g_aux_num].name),
+                     "%s", val);
+            snprintf(g_aux[g_aux_num].action, sizeof(g_aux[g_aux_num].action),
+                     "%s", bar + 1);
+        } else {
+            snprintf(g_aux[g_aux_num].name, sizeof(g_aux[g_aux_num].name),
+                     "%s", val);
+            snprintf(g_aux[g_aux_num].action, sizeof(g_aux[g_aux_num].action),
+                     "Press");
+        }
+        g_aux_num++;
+    }
+    g_aux_loaded = 1;
+    return g_aux_num;
+}
+
+/* act=features: a plain-text, newline-separated list the panel parses
+ * without any eval.  Lines are "aux\t<action>\t<name>\t<value>" and
+ * "ircut\tIrCutFilter".  The device is the only source of truth here. */
+static void act_features(int fd)
+{
+    char body[4096];
+    size_t off = 0;
+    int i, n;
+
+    if (!g_aux_loaded)
+        aux_list_load();
+
+    for (i = 0; i < g_aux_num; i++) {
+        if (off + 1 >= sizeof(body))
+            break;
+        n = snprintf(body + off, sizeof(body) - off, "aux\t%s\t%s\t%s\n",
+                     g_aux[i].action, g_aux[i].name, g_aux[i].cmd);
+        if (n < 0 || (size_t)n >= sizeof(body) - off)
+            break;
+        off += (size_t)n;
+    }
+
+    /* The imaging service always renders IrCutFilter, so its presence in
+     * GetImagingSettings is the signal that the feature is wired up.
+     * imaging_service.c:check_video_source_token() rejects the call unless the
+     * literal VideoSourceToken element is present. */
+    if (off + 1 < sizeof(body)) {
+        static char img[4096];
+        if (onvif_call("imaging_service",
+                       "<GetImagingSettings xmlns=\"http://www.onvif.org/ver20/imaging/wsdl\">"
+                       "<VideoSourceToken>VideoSourceToken</VideoSourceToken>"
+                       "</GetImagingSettings>",
+                       img, sizeof(img)) == 0 &&
+            strstr(img, "IrCutFilter")) {
+            n = snprintf(body + off, sizeof(body) - off, "ircut\tIrCutFilter\n");
+            if (n > 0 && (size_t)n < sizeof(body) - off)
+                off += (size_t)n;
+        }
+    }
+
+    if (off == 0)
+        off = (size_t)snprintf(body, sizeof(body), "none\n");
+    body[off] = '\0';
+    reply_text(fd, body);
+}
+
+/* act=aux&cmd=<value>: only values the device just advertised are accepted,
+ * so this cannot be used to reach a command the conf does not expose.
+ * Compared case-insensitively because SendAuxiliaryCommand is. */
+static void act_aux(int fd, const char *want)
+{
+    int i;
+
+    if (!g_aux_loaded)
+        aux_list_load();
+    for (i = 0; i < g_aux_num; i++) {
+        if (!strcasecmp(g_aux[i].cmd, want)) {
+            char inner[512];
+            static char resp[4096];
+            snprintf(inner, sizeof(inner),
+                     "<SendAuxiliaryCommand xmlns=\"http://www.onvif.org/ver20/ptz/wsdl\">"
+                     "<AuxiliaryData><AuxiliaryCommand>%s</AuxiliaryCommand>"
+                     "</AuxiliaryData></SendAuxiliaryCommand>", want);
+            onvif_call("ptz_service", inner, resp, sizeof(resp));
+            break;
+        }
+    }
+    reply_ok(fd);
+}
+
+/* act=ircut&v=on|off|auto -> SetImagingSettings.  Values are forwarded
+ * uppercase, which is what imaging_service.c substitutes into
+ * ir_cut_filter_set=%s. */
+static void act_ircut(int fd, const char *v)
+{
+    char inner[256];
+    static char resp[4096];
+
+    if (!v[0])
+        v = "auto";
+    if (strcasecmp(v, "on") && strcasecmp(v, "off") && strcasecmp(v, "auto")) {
+        reply_ok(fd);
+        return;
+    }
+    snprintf(inner, sizeof(inner),
+             "<SetImagingSettings xmlns=\"http://www.onvif.org/ver20/imaging/wsdl\">"
+             "<VideoSourceToken>VideoSourceToken</VideoSourceToken>"
+             "<ImagingSettings><IrCutFilter>%s</IrCutFilter></ImagingSettings>"
+             "</SetImagingSettings>", v);
+    onvif_call("imaging_service", inner, resp, sizeof(resp));
+    reply_ok(fd);
+}
+
 static void run_ptz(int fd, const char *query)
 {
     const char *bin = getenv("PTZCTL_BIN");
     static char act[24], spd[24], num[24];
+    static char cmd[256], val2[24];
     char np[16];
     double sval;
     int n, debug = getenv("PTZ_DEBUG") != NULL;
@@ -205,11 +473,11 @@ static void run_ptz(int fd, const char *query)
     if (!bin || !bin[0])
         bin = "/mnt/mtd/ipc/onvifd/bin/ptzctl";
 
-    act[0] = spd[0] = num[0] = '\0';
+    act[0] = spd[0] = num[0] = cmd[0] = val2[0] = '\0';
     while (p && *p) {
         const char *amp = strchr(p, '&');
         size_t tlen = amp ? (size_t)(amp - p) : strlen(p);
-        char tok[64];
+        char tok[320];
         char *name, *val;
         char *eq;
         if (tlen == 0) { p = amp ? amp + 1 : NULL; continue; }
@@ -229,14 +497,25 @@ static void run_ptz(int fd, const char *query)
             snprintf(spd, sizeof(spd), "%s", val);
         else if (!strcmp(name, "number") && *val && strspn(val, "0123456789") == strlen(val))
             snprintf(num, sizeof(num), "%s", val);
+        else if (!strcmp(name, "cmd") && *val)
+            snprintf(cmd, sizeof(cmd), "%s", val);
+        else if (!strcmp(name, "v") && *val)
+            snprintf(val2, sizeof(val2), "%s", val);
         p = amp ? amp + 1 : NULL;
     }
 
     if (!act[0]) { reply_ok(fd); return; }     /* empty/health request */
 
-    fprintf(stderr, "ptz: act=%s spd=%s num=%s\n", act, spd, num);
+    fprintf(stderr, "ptz: act=%s spd=%s num=%s cmd=%s v=%s\n", act, spd, num,
+            cmd, val2);
 
     if (!strcmp(act, "hscan") || !strcmp(act, "vscan")) { reply_ok(fd); return; }
+
+    /* Conf-driven features (see the section above): discovery and execution
+     * both go through the CGI, so the conf decides what exists. */
+    if (!strcmp(act, "features")) { act_features(fd); return; }
+    if (!strcmp(act, "aux"))       { act_aux(fd, cmd); return; }
+    if (!strcmp(act, "ircut"))     { act_ircut(fd, val2); return; }
 
     if (!strcmp(act, "stop")) {
         char *a1[] = { (char *)bin, "move", "-m", "stop", NULL };
@@ -603,8 +882,17 @@ int main(int argc, char **argv)
                 && (uri[4] == '\0' || uri[4] == '/')) {
             if (strcmp(method, "GET") != 0)
                 http_error(cfd, 405);
-            else
+            else {
+                /* the conf-driven /ptz acts call back into this CGI */
+                inet_ntop(AF_INET, &sa.sin_addr, client_ip, sizeof(client_ip));
+                gw.binary = binary;
+                gw.conf = conf;
+                gw.chdir_dir = chdir_dir;
+                gw.timeout_s = timeout_s;
+                snprintf(gw.client_ip, sizeof(gw.client_ip), "%s", client_ip);
+                gw.client_port = ntohs(sa.sin_port);
                 run_ptz(cfd, qs);
+            }
             close(cfd);
             continue;
         }

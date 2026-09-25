@@ -43,6 +43,7 @@ int process_conf_file(char *file)
 
     int i, errno;
     char *endptr;
+    int aux_dropped = 0;
 
     fF = fopen(file, "r");
     if(fF == NULL)
@@ -635,17 +636,27 @@ int process_conf_file(char *file)
 
         //Auxiliary commands (SendAuxiliaryCommand on PTZ service)
         } else if (strcasecmp(param, "aux_command") == 0) {
-            service_ctx.aux_commands_num++;
+            // Entries are stored at [aux_commands_num-1], so the count may
+            // legally reach MAX_AUX_COMMANDS.  On overflow drop just this
+            // entry and keep parsing: bailing out here used to discard the
+            // entire remainder of the conf.
             if (service_ctx.aux_commands_num >= MAX_AUX_COMMANDS) {
-                log_error("Too many aux commands, max is: %d", MAX_AUX_COMMANDS);
-                return -2;
+                log_error("Ignore aux command, too many aux commands, max is: %d", MAX_AUX_COMMANDS);
+                aux_dropped = 1;
+            } else {
+                service_ctx.aux_commands_num++;
+                service_ctx.aux_commands = (aux_command_t *) realloc(service_ctx.aux_commands, service_ctx.aux_commands_num * sizeof(aux_command_t));
+                service_ctx.aux_commands[service_ctx.aux_commands_num - 1].command = (char *) malloc(strlen(value) + 1);
+                snprintf(service_ctx.aux_commands[service_ctx.aux_commands_num - 1].command, strlen(value) + 1, "%s", value);
+                service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec = NULL;
+                aux_dropped = 0;
             }
-            service_ctx.aux_commands = (aux_command_t *) realloc(service_ctx.aux_commands, service_ctx.aux_commands_num * sizeof(aux_command_t));
-            service_ctx.aux_commands[service_ctx.aux_commands_num - 1].command = (char *) malloc(strlen(value) + 1);
-            snprintf(service_ctx.aux_commands[service_ctx.aux_commands_num - 1].command, strlen(value) + 1, "%s", value);
-            service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec = NULL;
         } else if (strcasecmp(param, "aux_exec") == 0) {
-            if (service_ctx.aux_commands_num > 0) {
+            // Skip the exec belonging to a command that was dropped above,
+            // otherwise it would overwrite the previous command's exec.
+            if (aux_dropped) {
+                aux_dropped = 0;
+            } else if (service_ctx.aux_commands_num > 0) {
                 service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec = (char *) malloc(strlen(value) + 1);
                 snprintf(service_ctx.aux_commands[service_ctx.aux_commands_num - 1].exec, strlen(value) + 1, "%s", value);
             }
@@ -1338,11 +1349,10 @@ int process_json_conf_file(char *file)
                 if (!item)
                     continue;
 
-                service_ctx.aux_commands_num++;
                 if (service_ctx.aux_commands_num >= MAX_AUX_COMMANDS) {
                     log_error("Ignore aux command, too many aux commands, max is: %d", MAX_AUX_COMMANDS);
-                    service_ctx.aux_commands_num--;
                 } else {
+                    service_ctx.aux_commands_num++;
                     service_ctx.aux_commands = (aux_command_t *) realloc(service_ctx.aux_commands, service_ctx.aux_commands_num * sizeof(aux_command_t));
 
                     // Init variables before reading
